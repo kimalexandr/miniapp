@@ -1,0 +1,32 @@
+# Зависимости
+node_modules/
+
+# Локальный env (токены, пароли)
+.env
+.env.local
+.env.*.local
+
+# Сборки
+dist/
+build/
+backend/dist/
+
+# Логи и кэш
+*.log
+npm-debug.log*
+.npm
+.cache
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Prisma
+backend/prisma/*.db
+backend/prisma/*.db-journal

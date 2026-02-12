@@ -1,0 +1,202 @@
+// Prisma schema для мини-апп «Курьер — доставка на маркетплейс»
+// ТЗ: Users, Clients, Drivers, Orders, OrderStatusHistory, Warehouses
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  CLIENT
+  DRIVER
+}
+
+enum UserStatus {
+  PENDING_PHONE   // ожидает привязки телефона
+  PENDING_ROLE    // ожидает выбора роли
+  ACTIVE
+  BLOCKED
+}
+
+enum OrderStatus {
+  NEW             // Новая (создана клиентом)
+  DRAFT           // Черновик
+  PUBLISHED       // Ожидает откликов
+  TAKEN           // Взята водителем
+  AT_WAREHOUSE    // Прибыл на склад
+  LOADING_DONE    // Загрузка завершена
+  IN_TRANSIT      // В пути
+  DELIVERED       // Доставлено
+  COMPLETED       // Закрыта
+  CANCELLED       // Отменена
+}
+
+model User {
+  id                String    @id @default(uuid())
+  telegramId        BigInt    @unique @map("telegram_id")
+  username          String?   @map("username")
+  firstName         String?   @map("first_name")
+  lastName          String?   @map("last_name")
+  languageCode      String?   @map("language_code")
+  phone             String?   @map("phone")           // зашифрованный или хэш
+  phoneVerifiedAt   DateTime? @map("phone_verified_at")
+  role              UserRole? @map("role")
+  status            UserStatus @default(PENDING_PHONE) @map("status")
+  roleChangeRequest Boolean   @default(false) @map("role_change_request") // запрос смены роли через поддержку
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  client  Client?
+  driver  Driver?
+  phoneVerifications PhoneVerification[]
+  auditLogs        AuditLog[]
+
+  @@map("users")
+}
+
+model Client {
+  id              String   @id @default(uuid())
+  userId          String   @unique @map("user_id")
+  companyName     String?  @map("company_name")
+  companyType     String?  @map("company_type")   // ИП, ООО, Физ. лицо, Самозанятый
+  inn             String?  @map("inn")
+  kpp             String?  @map("kpp")
+  legalAddress    String?  @map("legal_address")
+  email           String?  @map("email")          // для актов и закрывающих документов
+  contactName     String?  @map("contact_name")
+  contactPhone    String?  @map("contact_phone")
+  contactEmail    String?  @map("contact_email")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  user       User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  warehouses Warehouse[]
+  orders     Order[]      @relation("OrderClient")
+
+  @@map("clients")
+}
+
+model Driver {
+  id                String   @id @default(uuid())
+  userId            String   @unique @map("user_id")
+  fullName          String?  @map("full_name")
+  email             String?  @map("email")
+  vehicleType       String?  @map("vehicle_type")      // тип ТС
+  vehiclePlate      String?  @map("vehicle_plate")     // госномер
+  loadCapacity      String?  @map("load_capacity")    // грузоподъёмность
+  dimensions        String?  @map("dimensions")        // габариты
+  licenseNumber     String?  @map("license_number")    // номер ВУ
+  licenseInfo       String?  @map("license_info")     // лицензии при необходимости
+  latitude          Float?   @map("latitude")         // геолокация
+  longitude         Float?   @map("longitude")
+  locationUpdatedAt DateTime? @map("location_updated_at")
+  driverStatus      String?  @map("driver_status")    // free, dogruz, busy
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orders Order[] @relation("OrderDriver")
+
+  @@map("drivers")
+}
+
+model Warehouse {
+  id          String   @id @default(uuid())
+  clientId    String   @map("client_id")
+  name        String?  @map("name")
+  address     String   @map("address")
+  latitude    Float?   @map("latitude")
+  longitude   Float?   @map("longitude")
+  workSchedule String? @map("work_schedule")
+  contactPhone String? @map("contact_phone")
+  contactPerson String? @map("contact_person")
+  pickupAvailable Boolean @default(false) @map("pickup_available") // забор со склада
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  client        Client  @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  ordersFrom    Order[] @relation("OrderFromWarehouse")
+
+  @@map("warehouses")
+}
+
+model Order {
+  id                  String      @id @default(uuid())
+  orderNumber         String      @unique @map("order_number")  // человекочитаемый номер заявки
+  clientId            String      @map("client_id")
+  driverId            String?     @map("driver_id")
+  fromWarehouseId     String?     @map("from_warehouse_id")
+  toAddress           String      @map("to_address")            // склад/пункт назначения (маркетплейс)
+  toLatitude          Float?      @map("to_latitude")
+  toLongitude         Float?      @map("to_longitude")
+  preferredDate       DateTime    @map("preferred_date")        // желательная дата подачи
+  preferredTimeFrom   String?     @map("preferred_time_from")   // время с
+  preferredTimeTo     String?     @map("preferred_time_to")     // время до
+  cargoType           String?     @map("cargo_type")            // палеты, короба и т.д.
+  cargoVolume         String?     @map("cargo_volume")
+  cargoWeight         Float?      @map("cargo_weight")
+  cargoPlaces         Int?        @map("cargo_places")          // количество мест
+  pickupRequired      Boolean     @default(false) @map("pickup_required")
+  specialConditions   String?     @map("special_conditions")    // хрупкий, температурный режим
+  contactName         String?     @map("contact_name")
+  contactPhone        String?     @map("contact_phone")
+  status              OrderStatus @default(NEW) @map("status")
+  responseDeadline    DateTime?   @map("response_deadline")    // дедлайн приёма откликов
+  price               Decimal?    @map("price")                // цена за заказ
+  paymentType         String?     @map("payment_type")          // наличные, безнал, с НДС
+  createdAt           DateTime    @default(now()) @map("created_at")
+  updatedAt           DateTime    @updatedAt @map("updated_at")
+
+  client       Client               @relation("OrderClient", fields: [clientId], references: [id], onDelete: Cascade)
+  driver       Driver?              @relation("OrderDriver", fields: [driverId], references: [id], onDelete: SetNull)
+  fromWarehouse Warehouse?          @relation("OrderFromWarehouse", fields: [fromWarehouseId], references: [id], onDelete: SetNull)
+  statusHistory OrderStatusHistory[]
+
+  @@map("orders")
+}
+
+model OrderStatusHistory {
+  id        String      @id @default(uuid())
+  orderId   String      @map("order_id")
+  status    OrderStatus @map("status")
+  comment   String?     @map("comment")
+  createdAt DateTime    @default(now()) @map("created_at")
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@map("order_status_history")
+}
+
+// Подтверждение телефона: код по SMS/звонку
+model PhoneVerification {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  phone     String   @map("phone")   // нормализованный номер
+  code      String   @map("code")    // код подтверждения
+  expiresAt DateTime @map("expires_at")
+  verifiedAt DateTime? @map("verified_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("phone_verifications")
+}
+
+// Лог действий пользователей (создание заявки, смена статуса, изменение профиля)
+model AuditLog {
+  id         String   @id @default(uuid())
+  userId     String   @map("user_id")
+  action     String   @map("action")     // order_created, status_changed, profile_updated
+  entityType String?  @map("entity_type") // Order, User, Client, Driver
+  entityId   String?  @map("entity_id")
+  payload    Json?    @map("payload")    // доп. данные
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("audit_logs")
+}

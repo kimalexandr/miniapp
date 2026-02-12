@@ -1,0 +1,731 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Курьер — доставка на маркетплейс</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <link rel="stylesheet" href="/src/styles/main.css">
+</head>
+<body>
+  <!-- Авторизация: загрузка -->
+  <section id="screen-auth-loading" class="screen">
+    <div class="page-header">Вход</div>
+    <p class="card-title" id="auth-loading-message">Проверка авторизации…</p>
+  </section>
+
+  <!-- Авторизация: привязка телефона -->
+  <section id="screen-auth-phone" class="screen">
+    <div class="page-header">Привязка телефона</div>
+    <p class="card-title mb-8">Укажите номер в формате +79001234567</p>
+    <div class="card mb-8">
+      <label>Номер телефона</label>
+      <input type="tel" id="auth-phone-input" placeholder="+7 900 123-45-67" />
+      <button type="button" class="btn btn-primary mt-16" id="auth-phone-request">Получить код</button>
+    </div>
+    <div class="card mb-8" id="auth-phone-confirm-block" style="display:none">
+      <label>Код из SMS</label>
+      <input type="text" id="auth-phone-code" placeholder="123456" maxlength="8" />
+      <button type="button" class="btn btn-primary mt-16" id="auth-phone-confirm">Подтвердить</button>
+    </div>
+    <p class="card-title text-muted" id="auth-phone-error" style="display:none; color:#f87171;"></p>
+  </section>
+
+  <!-- Авторизация: выбор роли -->
+  <section id="screen-auth-choose-role" class="screen">
+    <div class="page-header">Выберите роль</div>
+    <p class="card-title mb-8">Как вы будете пользоваться сервисом?</p>
+    <div class="role-switch">
+      <button type="button" class="active" data-choose-role="CLIENT">Клиент</button>
+      <button type="button" data-choose-role="DRIVER">Водитель</button>
+    </div>
+    <button type="button" class="btn btn-primary mt-16" id="auth-role-submit">Продолжить</button>
+  </section>
+
+  <!-- Выбор роли (главный экран) -->
+  <section id="screen-home" class="screen">
+    <div class="page-header">Курьер</div>
+    <p class="card-title mb-8">Доставка на маркетплейс</p>
+    <div class="role-switch">
+      <button type="button" class="active" data-role="client">Клиент</button>
+      <button type="button" data-role="driver">Водитель</button>
+    </div>
+    <div class="card" id="home-links-client">
+      <div class="card-title">Быстрый доступ</div>
+      <div class="order-preview" data-go="order">
+        <div class="route">Новая заявка</div>
+        <div class="meta">Создать заказ на перевозку</div>
+      </div>
+      <div class="order-preview" data-go="orders">
+        <div class="route">Активные заявки</div>
+        <div class="meta">Статус: незакрытые, взятые, в процессе</div>
+      </div>
+      <div class="order-preview" data-go="map">
+        <div class="route">Заявки на карте</div>
+        <div class="meta">Карта с заявками и водителями</div>
+      </div>
+      <div class="order-preview" data-go="profile-client">
+        <div class="route">Профиль</div>
+        <div class="meta">Реквизиты, склад, контакты</div>
+      </div>
+    </div>
+    <div class="card" id="home-links-driver" style="display:none">
+      <div class="card-title">Быстрый доступ</div>
+      <div class="order-preview" data-go="orders">
+        <div class="route">Доступные заявки</div>
+        <div class="meta">Откликнуться на заявки</div>
+      </div>
+      <div class="order-preview" data-go="orders">
+        <div class="route">Мои заявки</div>
+        <div class="meta">Взятые и в процессе</div>
+      </div>
+      <div class="order-preview" data-go="map">
+        <div class="route">Заявки на карте</div>
+        <div class="meta">Карта заявок</div>
+      </div>
+      <div class="order-preview" data-go="profile-driver">
+        <div class="route">Мой профиль водителя</div>
+        <div class="meta">Компания, авто, водители</div>
+      </div>
+      <div class="order-preview" data-go="driver-status">
+        <div class="route">Мой статус</div>
+        <div class="meta">Свободен / догруз / занят</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Клиент: новая заявка -->
+  <section id="screen-order" class="screen">
+    <div class="page-header">Новая заявка</div>
+
+    <div class="card mb-8">
+      <label>Адрес склада отправления (или выберите из профиля)</label>
+      <select id="order-from-warehouse" class="mb-8"><option value="">— Выбрать склад —</option></select>
+      <input type="text" id="order-from-address" placeholder="Адрес отправления" />
+    </div>
+    <div class="card mb-8">
+      <label>Адрес назначения (склад маркетплейса)</label>
+      <input type="text" id="order-to-address" placeholder="Например: Коледино, Подольск" required />
+    </div>
+
+    <div class="card mb-8">
+      <div class="card-title">Груз</div>
+      <div class="row mb-8">
+        <div><label>Кол-во мест</label><input type="number" id="order-cargo-places" placeholder="4" min="1" /></div>
+        <div><label>Тип</label><select id="cargo-type-select"><option value="pallet">Палеты</option><option value="box">Короба</option></select></div>
+      </div>
+      <p class="card-title" id="cargo-hint">Палета стандарт: 120×80×180 см, до 300 кг (16 коробок 60×40×40)</p>
+      <label>Вес 1 места, кг</label>
+      <input type="number" id="order-cargo-weight" placeholder="до 300" />
+    </div>
+
+    <div class="card mb-8">
+      <div class="card-title">Погрузка</div>
+      <div class="row mb-8">
+        <div><label>Дата</label><input type="date" id="order-preferred-date" /></div>
+        <div><label>С</label><input type="time" id="order-time-from" /></div>
+        <div><label>До</label><input type="time" id="order-time-to" /></div>
+      </div>
+      <label>Забор со склада</label>
+      <select id="order-pickup"><option value="0">Нет</option><option value="1">Да</option></select>
+      <label class="mt-8">Особые условия</label>
+      <input type="text" id="order-special" placeholder="Хрупкий, температурный режим" />
+    </div>
+
+    <div class="card mb-8">
+      <label>Контакт ответственного</label>
+      <input type="text" id="order-contact-name" placeholder="Имя" class="mb-8" />
+      <input type="tel" id="order-contact-phone" placeholder="+7 910 671-97-70" />
+    </div>
+
+    <div class="card mb-8">
+      <label>Цена за заказ, ₽</label>
+      <input type="number" id="order-price" placeholder="2000" />
+      <label class="mt-16">Форма оплаты</label>
+      <select id="order-payment"><option value="Наличные">Наличные</option><option value="Безнал">Безнал</option><option value="С НДС">С НДС</option></select>
+    </div>
+
+    <button type="button" class="btn btn-ghost mt-16" id="order-cancel">Отмена</button>
+    <button type="button" class="btn btn-primary mt-16" id="order-submit">Сохранить и отправить</button>
+  </section>
+
+  <!-- Водитель: статус и догруз -->
+  <section id="screen-driver-status" class="screen">
+    <div class="page-header">Мой статус</div>
+    <p class="card-title mb-8">Геолокация видна клиентам в зависимости от статуса</p>
+
+    <div class="status-cards">
+      <div class="status-card selected" data-status="free">
+        <div class="name">Свободен</div>
+        <div class="hint">Гео + кол-во мест + вес видны всем</div>
+      </div>
+      <div class="status-card" data-status="dogruz">
+        <div class="name">Догруз</div>
+        <div class="hint">Укажите направление и объём к догрузу</div>
+      </div>
+      <div class="status-card" data-status="busy">
+        <div class="name">Занят</div>
+        <div class="hint">Гео только клиентам, груз уже в авто</div>
+      </div>
+    </div>
+
+    <div id="dogruz-block" class="card mt-16" style="display:none">
+      <div class="card-title">Догруз по направлениям</div>
+      <div class="chips">
+        <span class="chip selected">WB</span>
+        <span class="chip">Озон</span>
+        <span class="chip">Яндекс</span>
+      </div>
+      <div class="row mt-16">
+        <div><label>Палет</label><input type="number" placeholder="2" /></div>
+        <div><label>Вес, кг</label><input type="number" placeholder="600" /></div>
+      </div>
+    </div>
+
+    <div class="card mt-16">
+      <div class="card-title">Доступно для догруза</div>
+      <p class="card-title">Мест: <strong>18 палет</strong>, вес до <strong>2500 кг</strong></p>
+    </div>
+
+    <button class="btn btn-primary mt-16">Обновить геолокацию</button>
+  </section>
+
+  <!-- Водитель: полный профиль и рейтинг (карточка для клиентов) -->
+  <section id="screen-driver-card" class="screen">
+    <div class="page-header">Профиль водителя</div>
+
+    <div class="card">
+      <div class="profile-block">
+        <div class="block-title">Контакт и рейтинг</div>
+        <div class="profile-row">
+          <span class="key">ФИО</span>
+          <span class="val">Иванов Иван Иванович</span>
+        </div>
+        <div class="profile-row">
+          <span class="key">Телефон</span>
+          <span class="val">+7 910 123-45-67</span>
+        </div>
+        <div class="profile-row">
+          <span class="key">Telegram</span>
+          <span class="val">@driver_nick</span>
+        </div>
+        <div class="profile-row">
+          <span class="key">Перевозок</span>
+          <span class="val">127</span>
+        </div>
+        <div class="profile-row">
+          <span class="key">Рейтинг</span>
+          <span class="val rating-big">4.8</span>
+          <span class="rating-stars">★★★★★</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="profile-block">
+        <div class="block-title">Компания</div>
+        <div class="profile-row"><span class="key">Название</span><span class="val">ИП Иванов</span></div>
+        <div class="profile-row"><span class="key">ИНН</span><span class="val">7707123456</span></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="profile-block">
+        <div class="block-title">Техника</div>
+        <div class="profile-row"><span class="key">Автомобилей</span><span class="val">2</span></div>
+        <div class="profile-row"><span class="key">Грузоподъёмность</span><span class="val">до 3,5 т</span></div>
+        <div class="profile-row"><span class="key">Палетомест</span><span class="val">18</span></div>
+        <div class="profile-row"><span class="key">Марки и гос. номера</span><span class="val">Газель А 123 BC 777, КамАЗ В 456 XY 199</span></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="profile-block">
+        <div class="block-title">Рейтинг по отзывам</div>
+        <div class="rating-bar-row"><span>5</span><span class="rating-stars">★</span><div class="bar"><span style="width:75%"></span></div><span class="text-muted">42</span></div>
+        <div class="rating-bar-row"><span>4</span><span class="rating-stars">★</span><div class="bar"><span style="width:20%"></span></div><span class="text-muted">11</span></div>
+        <div class="rating-bar-row"><span>3</span><span class="rating-stars">★</span><div class="bar"><span style="width:4%"></span></div><span class="text-muted">2</span></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="profile-block">
+        <div class="block-title">Последние отзывы клиентов</div>
+        <div class="review-card">
+          <div class="review-head">
+            <span class="review-stars">★★★★★</span>
+            <span class="review-date">05.02.2025</span>
+          </div>
+          <div class="review-text">Всё вовремя, аккуратная погрузка. Рекомендую.</div>
+        </div>
+        <div class="review-card">
+          <div class="review-head">
+            <span class="review-stars">★★★★☆</span>
+            <span class="review-date">01.02.2025</span>
+          </div>
+          <div class="review-text">Хороший водитель, единственное — позвонил с опозданием на 15 минут.</div>
+        </div>
+        <div class="review-card">
+          <div class="review-head">
+            <span class="review-stars">★★★★★</span>
+            <span class="review-date">28.01.2025</span>
+          </div>
+          <div class="review-text">Всё супер.</div>
+        </div>
+      </div>
+    </div>
+
+    <button class="btn btn-primary mt-16">Написать в Telegram</button>
+    <button class="btn btn-ghost mt-16">Позвонить</button>
+  </section>
+
+  <!-- Активные заявки (клиент и водитель видят статусы) -->
+  <section id="screen-orders" class="screen">
+    <div class="page-header">Активные заявки</div>
+    <div class="driver-hint" id="driver-bids-hint" style="display:none">У вас <strong>5 из 20</strong> активных откликов</div>
+    <div class="tabs-inline" id="order-tabs">
+      <button type="button" class="active" data-filter="all">Все</button>
+      <button type="button" data-filter="draft">Черновики</button>
+      <button type="button" data-filter="published">Ожидают откликов</button>
+      <button type="button" data-filter="taken">Взятые</button>
+      <button type="button" data-filter="progress">В процессе</button>
+      <button type="button" data-filter="completed">Завершённые</button>
+      <button type="button" data-filter="cancelled">Отменённые</button>
+    </div>
+    <div class="card" id="orders-list">
+      <!-- Черновик -->
+      <div class="order-item" data-status="draft">
+        <div class="head">
+          <span class="route">WB → Коледино, 2 палеты</span>
+          <span class="status-badge draft">Черновик</span>
+        </div>
+        <div class="meta">Не опубликовано · 2000 ₽</div>
+        <div class="order-actions">
+          <button class="btn btn-primary btn-small">Опубликовать</button>
+          <button class="btn btn-ghost btn-small">Редактировать</button>
+        </div>
+      </div>
+      <!-- Ожидает откликов: дедлайн, закрыть приём, отменить -->
+      <div class="order-item" data-status="published">
+        <div class="head">
+          <span class="route">WB → Коледино, 4 палеты</span>
+          <span class="status-badge published">Ожидает откликов</span>
+        </div>
+        <div class="meta">Погрузка 07.02, Варшавское шоссе 132с9</div>
+        <div class="meta">Ваша цена: <strong>2000 ₽</strong></div>
+        <div class="deadline">Отклики до: 06.02 18:00</div>
+        <div class="response-item">
+          <div class="driver">Иванов Иван · Газель <a href="#" class="link-muted" data-go="driver-card">Профиль и рейтинг</a></div>
+          <div class="price">Предложил 1 800 ₽</div>
+          <div class="comment">Подъеду с 10:00, могу взять ещё 2 палета по пути.</div>
+          <button class="btn btn-primary btn-small">Подтвердить</button>
+        </div>
+        <div class="response-item my-response">
+          <div class="driver">Петров Пётр · КамАЗ <span class="card-title">(ваш отклик)</span></div>
+          <div class="price">Вы предложили 2 200 ₽</div>
+          <div class="comment">Готов в указанное время.</div>
+          <button class="btn btn-ghost btn-small">Редактировать отклик</button>
+          <button class="btn btn-danger btn-small">Отозвать отклик</button>
+        </div>
+        <div class="order-actions">
+          <button class="btn btn-ghost btn-small">Закрыть приём откликов</button>
+          <button class="btn btn-danger btn-small">Отменить заявку</button>
+          <button class="btn btn-ghost btn-small" data-go="order-detail">Подробнее</button>
+        </div>
+      </div>
+      <!-- Взято: итоговая цена, отменить поездку -->
+      <div class="order-item" data-status="taken">
+        <div class="head">
+          <span class="route">Озон → Подольск, 2 палеты</span>
+          <span class="status-badge taken">Взято</span>
+        </div>
+        <div class="meta">Водитель Иванов · погрузка 08.02</div>
+        <div class="meta">Цена в заявке: <span class="price-original">2000 ₽</span> → Итоговая: <span class="price-final">1 800 ₽</span></div>
+        <div class="order-actions">
+          <button class="btn btn-primary btn-small" data-go="chat">Чат</button>
+          <button class="btn btn-danger btn-small">Отменить поездку</button>
+          <button class="btn btn-ghost btn-small" data-go="order-detail">Подробнее</button>
+        </div>
+      </div>
+      <!-- В процессе: шаги -->
+      <div class="order-item" data-status="progress">
+        <div class="head">
+          <span class="route">Яндекс → Алексин, 1 палета</span>
+          <span class="status-badge in_progress">В процессе</span>
+        </div>
+        <div class="meta">Водитель Иванов · Итоговая цена: 2000 ₽</div>
+        <div class="steps">
+          <span class="step done">Погрузка</span>
+          <span class="step current">В пути</span>
+          <span class="step">Выгрузка</span>
+          <span class="step">Завершено</span>
+        </div>
+        <div class="order-actions">
+          <button class="btn btn-primary btn-small" data-go="chat">Чат</button>
+          <button class="btn btn-danger btn-small">Отменить поездку</button>
+          <button class="btn btn-ghost btn-small" data-go="dispute">Открыть спор</button>
+        </div>
+      </div>
+      <!-- Водитель отказался — снова открыта -->
+      <div class="order-item" data-status="published">
+        <div class="head">
+          <span class="route">WB → Подольск, 3 палеты</span>
+          <span class="status-badge reopened">Водитель отказался — снова открыта</span>
+        </div>
+        <div class="meta">Отклики до: 07.02 12:00 · 2500 ₽</div>
+        <div class="response-item">
+          <div class="driver">Сидоров · Газель</div>
+          <div class="price">Предложил 2 400 ₽</div>
+          <button class="btn btn-primary btn-small">Подтвердить</button>
+        </div>
+        <div class="order-actions">
+          <button class="btn btn-ghost btn-small">Закрыть приём откликов</button>
+          <button class="btn btn-danger btn-small">Отменить заявку</button>
+        </div>
+      </div>
+      <!-- Завершена: оценить -->
+      <div class="order-item" data-status="completed">
+        <div class="head">
+          <span class="route">Озон → Коледино, 4 палеты</span>
+          <span class="status-badge completed">Завершена</span>
+        </div>
+        <div class="meta">Итоговая цена: 1 900 ₽ · 05.02</div>
+        <button class="btn btn-primary btn-small" data-go="rating">Оценить водителя</button>
+      </div>
+      <!-- Отменена -->
+      <div class="order-item" data-status="cancelled">
+        <div class="head">
+          <span class="route">Яндекс → Алексин, 2 палеты</span>
+          <span class="status-badge cancelled">Отменена</span>
+        </div>
+        <div class="meta">Отменил клиент · 04.02</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Карточка заявки (детально) -->
+  <section id="screen-order-detail" class="screen">
+    <div class="page-header" id="order-detail-title">Заявка</div>
+    <div class="card order-detail">
+      <div class="section" id="order-detail-content">
+        <div class="card-title">Загрузка…</div>
+      </div>
+      <div class="section order-actions" id="order-detail-actions"></div>
+    </div>
+    <button type="button" class="btn btn-ghost mt-16" data-go="orders">← К списку заявок</button>
+  </section>
+
+  <!-- Клиент: профиль (редактирование) + мой рейтинг -->
+  <section id="screen-profile-client" class="screen">
+    <div class="page-header">Мой профиль</div>
+
+    <div class="card">
+      <div class="card-title">Компания</div>
+      <input type="text" id="profile-client-company" placeholder="Название ИП / ООО" class="mb-8" />
+      <select class="mb-8" id="profile-client-type"><option>ИП</option><option>ООО</option><option>Физ. лицо</option><option>Самозанятый</option></select>
+      <input type="text" id="profile-client-inn" placeholder="ИНН" />
+      <input type="text" id="profile-client-kpp" placeholder="КПП" class="mt-8" />
+      <input type="text" id="profile-client-legal" placeholder="Юр. адрес" class="mt-8" />
+      <input type="email" id="profile-client-email" placeholder="E-mail для актов" class="mt-8" />
+    </div>
+    <div class="card">
+      <div class="card-title">Адрес склада</div>
+      <div class="map-placeholder mt-16">Точка на карте</div>
+      <input type="text" placeholder="Адрес" class="mt-16" />
+    </div>
+    <div class="card">
+      <div class="card-title">Погрузка</div>
+      <div class="chips mb-8">
+        <span class="chip selected">Пандус</span>
+        <span class="chip">В ноль</span>
+        <span class="chip">Механическая</span>
+        <span class="chip">Подъезд фуры</span>
+      </div>
+      <label>Фото зоны погрузки</label>
+      <div class="map-placeholder mt-16">Загрузить фото</div>
+    </div>
+    <div class="card">
+      <div class="card-title">Режим работы</div>
+      <input type="text" placeholder="Пн–Пт 9:00–18:00" class="mb-8" />
+      <label>Пропуск</label>
+      <select><option>Не нужен</option><option>Нужен</option></select>
+      <label class="mt-16">Парковка</label>
+      <select><option>Бесплатная</option><option>Платная</option></select>
+    </div>
+    <div class="card">
+      <div class="card-title">Контакты ответственного за погрузку</div>
+      <input type="tel" id="profile-client-contact-phone" placeholder="Телефон 1" class="mb-8" />
+      <input type="text" id="profile-client-contact-name" placeholder="Контактное лицо" class="mb-8" />
+      <input type="email" id="profile-client-contact-email" placeholder="E-mail" class="mb-8" />
+      <input type="tel" placeholder="Телефон 2 (необязательно)" class="mb-8" />
+      <input type="text" placeholder="@nick2 в Telegram (необязательно)" class="mb-8" />
+      <button type="button" class="btn btn-ghost btn-small">+ Добавить контакт</button>
+    </div>
+    <div class="card">
+      <label>Форма оплаты</label>
+      <select><option>Наличные</option><option>Безнал</option><option>С НДС</option></select>
+    </div>
+
+    <div class="card">
+      <div class="profile-block">
+        <div class="block-title">Мой рейтинг (как оценивают водители)</div>
+        <div class="profile-row">
+          <span class="key">Средний балл</span>
+          <span class="val rating-big">4.6</span>
+          <span class="rating-stars">★★★★★</span>
+        </div>
+        <div class="profile-row"><span class="key">Отзывов</span><span class="val">24</span></div>
+        <div class="review-card mt-16">
+          <div class="review-head"><span class="review-stars">★★★★★</span><span class="review-date">04.02.2025</span></div>
+          <div class="review-text">Погрузка по времени, всё чётко. Склад удобный.</div>
+        </div>
+        <div class="review-card">
+          <div class="review-head"><span class="review-stars">★★★★☆</span><span class="review-date">30.01.2025</span></div>
+          <div class="review-text">Немного задержали с оформлением, но в целом нормально.</div>
+        </div>
+      </div>
+    </div>
+
+    <button type="button" class="btn btn-primary mt-16" id="profile-client-save">Сохранить</button>
+    <button type="button" class="btn btn-ghost mt-16" data-go="profile-client-view">Предпросмотр: как видят мой профиль водители</button>
+  </section>
+
+  <!-- Профиль клиента и склада (просмотр — как видит водитель) -->
+  <section id="screen-profile-client-view" class="screen">
+    <div class="page-header">Профиль клиента и склада</div>
+    <p class="card-title mb-8">Так видят вашу компанию и склад водители</p>
+
+    <div class="card">
+      <div class="profile-block">
+        <div class="block-title">Компания</div>
+        <div class="profile-row"><span class="key">Название</span><span class="val">ИП Донченко</span></div>
+        <div class="profile-row"><span class="key">ИНН</span><span class="val">7707987654</span></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="profile-block">
+        <div class="block-title">Склад и адрес</div>
+        <div class="profile-row"><span class="key">Адрес</span><span class="val">Москва, Варшавское шоссе, 132с9</span></div>
+        <div class="map-placeholder mt-16">Карта с точкой</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="profile-block">
+        <div class="block-title">Погрузка</div>
+        <div class="chips mb-8">
+          <span class="chip selected">Пандус</span>
+          <span class="chip selected">Механическая</span>
+          <span class="chip">Подъезд фуры</span>
+        </div>
+        <div class="block-title">Фото зоны погрузки</div>
+        <div class="photo-grid">
+          <div class="photo-thumb">Фото 1</div>
+          <div class="photo-thumb">Фото 2</div>
+          <div class="photo-thumb">Фото 3</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="profile-block">
+        <div class="block-title">Режим работы и условия</div>
+        <div class="profile-row"><span class="key">Режим работы</span><span class="val">Пн–Пт 9:00–18:00</span></div>
+        <div class="profile-row"><span class="key">Пропуск</span><span class="val">Не нужен</span></div>
+        <div class="profile-row"><span class="key">Парковка</span><span class="val">Бесплатная</span></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="profile-block">
+        <div class="block-title">Контакты ответственного</div>
+        <div class="profile-row"><span class="key">Телефон</span><span class="val">+7 910 671-97-70</span></div>
+        <div class="profile-row"><span class="key">Telegram</span><span class="val">@client_nick</span></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="profile-block">
+        <div class="block-title">Оплата</div>
+        <div class="profile-row"><span class="key">Форма оплаты</span><span class="val">Безнал, с НДС</span></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="profile-block">
+        <div class="block-title">Рейтинг клиента (от водителей)</div>
+        <div class="profile-row">
+          <span class="key">Средний балл</span>
+          <span class="val rating-big">4.6</span>
+          <span class="rating-stars">★★★★★</span>
+        </div>
+        <div class="profile-row"><span class="key">Отзывов</span><span class="val">24</span></div>
+        <div class="rating-bar-row mt-16"><span>5</span><span class="rating-stars">★</span><div class="bar"><span style="width:70%"></span></div><span class="text-muted">17</span></div>
+        <div class="rating-bar-row"><span>4</span><span class="rating-stars">★</span><div class="bar"><span style="width:25%"></span></div><span class="text-muted">6</span></div>
+        <div class="review-card mt-16">
+          <div class="review-head"><span class="review-stars">★★★★★</span><span class="review-date">04.02.2025</span></div>
+          <div class="review-text">Погрузка по времени, всё чётко. Склад удобный.</div>
+        </div>
+      </div>
+    </div>
+
+    <button class="btn btn-primary mt-16">Написать в Telegram</button>
+    <button class="btn btn-ghost mt-16" data-go="profile-client">← Редактировать мой профиль</button>
+  </section>
+
+  <!-- Мой профиль водителя (редактирование) -->
+  <section id="screen-profile-driver" class="screen">
+    <div class="page-header">Мой профиль водителя</div>
+    <p class="card-title mb-8">Регистрация и редактирование</p>
+    <div class="card">
+      <div class="card-title">Личные данные</div>
+      <input type="text" id="profile-driver-fullname" placeholder="ФИО" class="mb-8" />
+      <input type="email" id="profile-driver-email" placeholder="E-mail" class="mb-8" />
+    </div>
+    <div class="card">
+      <div class="card-title">Техника</div>
+      <input type="text" id="profile-driver-vehicle" placeholder="Тип ТС" class="mb-8" />
+      <input type="text" id="profile-driver-plate" placeholder="Гос. номер" class="mb-8" />
+      <label>Грузоподъёмность</label>
+      <input type="text" id="profile-driver-capacity" placeholder="до 3,5 т" class="mb-8" />
+      <label>ВУ</label>
+      <input type="text" id="profile-driver-license" placeholder="Номер водительского удостоверения" />
+    </div>
+    <div class="card">
+      <div class="card-title">Статус на карте</div>
+      <select id="profile-driver-status"><option value="">—</option><option value="free">Свободен</option><option value="dogruz">Догруз</option><option value="busy">Занят</option></select>
+    </div>
+    <button type="button" class="btn btn-primary mt-16" id="profile-driver-save">Сохранить</button>
+    <button type="button" class="btn btn-primary mt-16" id="profile-driver-location">Обновить геолокацию</button>
+  </section>
+
+  <!-- Водитель: смена статуса заявки -->
+  <section id="screen-order-status-driver" class="screen">
+    <div class="page-header">Сменить статус заявки</div>
+    <div class="card">
+      <button type="button" class="btn btn-ghost mb-8 order-status-btn" data-status="AT_WAREHOUSE">Прибыл на склад</button>
+      <button type="button" class="btn btn-ghost mb-8 order-status-btn" data-status="LOADING_DONE">Загрузка завершена</button>
+      <button type="button" class="btn btn-ghost mb-8 order-status-btn" data-status="IN_TRANSIT">В пути</button>
+      <button type="button" class="btn btn-ghost mb-8 order-status-btn" data-status="DELIVERED">Доставлено</button>
+      <button type="button" class="btn btn-primary order-status-btn" data-status="COMPLETED">Закрыть заявку</button>
+    </div>
+    <button type="button" class="btn btn-ghost mt-16" data-go="orders">← К заявкам</button>
+  </section>
+
+  <!-- Карта заявок и водителей -->
+  <section id="screen-map" class="screen">
+    <div class="page-header">Заявки на карте</div>
+    <p class="card-title mb-8">Точки — заявки (погрузка), маркеры — водители (свободны/догруз)</p>
+    <div id="yandex-map-container" style="height:280px; width:100%; border-radius: var(--radius);"></div>
+    <div class="tabs-inline mt-16">
+      <button type="button" class="active">Заявки</button>
+      <button type="button">Водители</button>
+    </div>
+    <div class="card mt-16">
+      <div class="order-item">
+        <div class="route">WB → Коледино, 4 п · 2000 ₽</div>
+        <div class="meta">Варшавское шоссе 132с9 · погрузка 07.02</div>
+      </div>
+      <div class="order-item">
+        <div class="route">Озон → Подольск, 2 п · 2500 ₽</div>
+        <div class="meta">Котовск · погрузка 08.02</div>
+      </div>
+    </div>
+    <button class="btn btn-ghost mt-16" data-go="home">← На главную</button>
+  </section>
+
+  <!-- Чат по заявке -->
+  <section id="screen-chat" class="screen">
+    <div class="page-header">Чат · WB → Коледино</div>
+    <p class="card-title mb-8">Клиент ИП Донченко ↔ Водитель Иванов</p>
+    <div class="card" style="min-height:200px">
+      <div class="review-card" style="margin-left:0; max-width:85%">
+        <div class="review-date">07.02 10:15</div>
+        <div class="review-text">Добрый день, подъезжаю через 20 минут.</div>
+      </div>
+      <div class="review-card" style="margin-left:auto; margin-right:0; max-width:85%; background: rgba(59,130,246,0.15);">
+        <div class="review-date">07.02 10:16</div>
+        <div class="review-text">Хорошо, ждём на проходной.</div>
+      </div>
+      <div class="review-card" style="margin-left:0; max-width:85%">
+        <div class="review-date">07.02 10:35</div>
+        <div class="review-text">Загрузился, выезжаю.</div>
+      </div>
+    </div>
+    <div class="row mt-16">
+      <input type="text" placeholder="Сообщение" style="flex:1" />
+      <button class="btn btn-primary btn-small">Отправить</button>
+    </div>
+    <button class="btn btn-ghost mt-16" data-go="orders">← К заявке</button>
+  </section>
+
+  <!-- Спор -->
+  <section id="screen-dispute" class="screen">
+    <div class="page-header">Спор по заявке</div>
+    <p class="card-title mb-8">WB → Коледино · ИП Донченко / Иванов</p>
+    <div class="card">
+      <div class="profile-row">
+        <span class="key">Статус</span>
+        <span class="val"><span class="status-badge in_progress">В работе</span></span>
+      </div>
+      <div class="profile-row">
+        <span class="key">Открыт</span>
+        <span class="val">07.02.2025</span>
+      </div>
+    </div>
+    <div class="card">
+      <div class="block-title">Переписка с администратором</div>
+      <div class="review-card">
+        <div class="review-date">07.02 14:00 · Вы</div>
+        <div class="review-text">Водитель утверждает, что выгрузка была в 15:30, а не в слот 12–15.</div>
+      </div>
+      <div class="review-card" style="background: rgba(59,130,246,0.1);">
+        <div class="review-date">07.02 14:30 · Админ</div>
+        <div class="review-text">Запросили подтверждение со склада. Ответим в течение 24 ч.</div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="block-title">Решение (после закрытия)</div>
+      <p class="card-title">Пока спор в работе, решение не выставлено.</p>
+    </div>
+    <div class="row mt-16">
+      <input type="text" placeholder="Сообщение в спор" style="flex:1" />
+      <button class="btn btn-primary btn-small">Отправить</button>
+    </div>
+    <button class="btn btn-ghost mt-16" data-go="orders">← К заявке</button>
+  </section>
+
+  <!-- Оценка после поездки -->
+  <section id="screen-rating" class="screen">
+    <div class="page-header">Оценить поездку</div>
+    <p class="card-title mb-8">Заявка Озон → Коледино · Водитель Иванов</p>
+    <div class="card">
+      <div class="block-title">Оценка</div>
+      <div class="rating-stars" style="font-size:32px; margin:12px 0" id="rating-stars">
+        <span data-star="1">☆</span><span data-star="2">☆</span><span data-star="3">☆</span><span data-star="4">☆</span><span data-star="5">☆</span>
+      </div>
+      <label>Комментарий (необязательно)</label>
+      <textarea placeholder="Напишите отзыв" rows="3"></textarea>
+    </div>
+    <button class="btn btn-primary mt-16">Отправить оценку</button>
+    <button class="btn btn-ghost mt-16" data-go="orders">Пропустить</button>
+  </section>
+
+  <!-- Нижняя навигация прототипа -->
+  <nav class="nav-tabs">
+    <button type="button" data-tab="home">Главная</button>
+    <button type="button" data-tab="order">Заявка</button>
+    <button type="button" data-tab="orders">Заявки</button>
+    <button type="button" data-tab="order-detail" style="display:none">Детали</button>
+    <button type="button" data-tab="driver-status">Статус</button>
+    <button type="button" data-tab="driver-card">Водитель</button>
+    <button type="button" data-tab="profile-client">Профиль</button>
+  </nav>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
