@@ -20,8 +20,20 @@ jobs:
           port: 22
           script: |
             set -e
-            cd ${{ secrets.DEPLOY_PATH }}
-            git fetch origin main
-            git reset --hard origin/main
+            DEPLOY_PATH="${{ secrets.DEPLOY_PATH }}"
+            if [ -z "$DEPLOY_PATH" ]; then
+              echo "Error: DEPLOY_PATH secret is not set"
+              exit 1
+            fi
+            if [ ! -d "$DEPLOY_PATH" ]; then
+              echo "Directory $DEPLOY_PATH not found, cloning repo..."
+              mkdir -p "$(dirname "$DEPLOY_PATH")"
+              git clone https://github.com/kimalexandr/miniapp.git "$DEPLOY_PATH"
+              cd "$DEPLOY_PATH"
+            else
+              cd "$DEPLOY_PATH"
+              git fetch origin main
+              git reset --hard origin/main
+            fi
             docker compose pull --quiet 2>/dev/null || true
             docker compose up -d --build
