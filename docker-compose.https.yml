@@ -1,0 +1,14 @@
+# Override для HTTPS (Let's Encrypt).
+# Запуск: docker compose -f docker-compose.yml -f docker-compose.https.yml up -d
+# Требуется: получить сертификаты Certbot и указать CERT_PATH в .env (см. SSL.md).
+
+version: "3.8"
+
+services:
+  frontend:
+    volumes:
+      - ./frontend/nginx-compose-https.conf:/etc/nginx/conf.d/default.conf:ro
+      - ${CERT_PATH:-./certs}:/etc/nginx/certs:ro
+    ports:
+      - "80:80"
+      - "443:443"
