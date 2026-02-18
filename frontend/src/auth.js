@@ -61,9 +61,11 @@ export function goHome() {
   if (hint) hint.style.display = isDriver ? 'block' : 'none';
   if (clientBlock) clientBlock.style.display = isDriver ? 'none' : 'block';
   if (driverBlock) driverBlock.style.display = isDriver ? 'block' : 'none';
-  document.querySelectorAll('[data-role]').forEach((b) => {
-    b.classList.toggle('active', b.dataset.role === (isDriver ? 'driver' : 'client'));
-  });
+  
+  // Полностью скрываем переключатель роли на главном экране (роль уже выбрана)
+  const roleSwitch = document.querySelector('#screen-home .role-switch');
+  if (roleSwitch) roleSwitch.style.display = 'none';
+  
   window.showScreen('home');
 }
 

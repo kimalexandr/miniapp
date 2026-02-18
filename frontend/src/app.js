@@ -392,19 +392,7 @@ function bindMisc() {
       });
     });
   });
-  document.querySelectorAll('[data-role]').forEach((btn) => {
-    btn.addEventListener('click', function () {
-      document.querySelectorAll('[data-role]').forEach((b) => b.classList.remove('active'));
-      this.classList.add('active');
-      const isDriver = this.dataset.role === 'driver';
-      const hint = document.getElementById('driver-bids-hint');
-      const clientBlock = document.getElementById('home-links-client');
-      const driverBlock = document.getElementById('home-links-driver');
-      if (hint) hint.style.display = isDriver ? 'block' : 'none';
-      if (clientBlock) clientBlock.style.display = isDriver ? 'none' : 'block';
-      if (driverBlock) driverBlock.style.display = isDriver ? 'block' : 'none';
-    });
-  });
+  // Переключатель роли на главном экране больше не нужен (роль закреплена при выборе)
   document.querySelectorAll('.tabs-inline').forEach((container) => {
     container.querySelectorAll('button').forEach((btn) => {
       btn.addEventListener('click', () => {
