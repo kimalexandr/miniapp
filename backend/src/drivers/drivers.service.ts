@@ -49,4 +49,50 @@ export class DriversService {
   async getProfile(userId: string) {
     return this.getOrCreateDriver(userId);
   }
+
+  async getDriverById(driverId: string) {
+    const driver = await this.prisma.driver.findUnique({
+      where: { id: driverId },
+      include: {
+        user: {
+          select: {
+            firstName: true,
+            lastName: true,
+            username: true,
+            phone: true,
+          },
+        },
+      },
+    });
+    
+    if (!driver) {
+      throw new Error('Водитель не найден');
+    }
+
+    // Получаем статистику рейтингов
+    const ratings = await this.prisma.rating.findMany({
+      where: { targetDriverId: driverId },
+      select: { score: true },
+    });
+
+    const totalRatings = ratings.length;
+    const averageRating = totalRatings > 0
+      ? ratings.reduce((sum, r) => sum + r.score, 0) / totalRatings
+      : 0;
+
+    // Количество завершенных поездок
+    const completedOrders = await this.prisma.order.count({
+      where: {
+        driverId: driverId,
+        status: 'COMPLETED',
+      },
+    });
+
+    return {
+      ...driver,
+      averageRating: Math.round(averageRating * 10) / 10,
+      totalRatings,
+      completedOrders,
+    };
+  }
 }

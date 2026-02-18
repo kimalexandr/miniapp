@@ -33,6 +33,7 @@ export function showScreen(screenId) {
   if (screenId === 'map') loadMapData();
   if (screenId === 'order') loadOrderWarehouses();
   if (screenId === 'driver-status') loadDriverStatus();
+  if (screenId === 'driver-card' && window._currentDriverId) loadDriverCard(window._currentDriverId);
   if (screenId === 'order-detail' && window._currentOrderId) loadOrderDetail(window._currentOrderId);
 }
 
@@ -217,6 +218,60 @@ export function loadDriverStatus() {
       }
     })
     .catch(() => {});
+}
+
+export function loadDriverCard(driverId) {
+  api('drivers/' + driverId)
+    .then((d) => {
+      // ФИО и контакты
+      const nameEl = document.getElementById('driver-card-name');
+      const phoneEl = document.getElementById('driver-card-phone');
+      const telegramEl = document.getElementById('driver-card-telegram');
+      
+      if (nameEl) {
+        nameEl.textContent = d.fullName || [d.user?.firstName, d.user?.lastName].filter(Boolean).join(' ') || '—';
+      }
+      if (phoneEl) {
+        phoneEl.textContent = d.user?.phone || '—';
+      }
+      if (telegramEl) {
+        telegramEl.textContent = d.user?.username ? '@' + d.user.username : '—';
+      }
+      
+      // Перевозок и рейтинг
+      const completedEl = document.querySelector('#driver-card-contact .profile-row:nth-child(4) .val');
+      const ratingEl = document.querySelector('#driver-card-contact .profile-row:nth-child(5) .val');
+      const starsEl = document.querySelector('#driver-card-contact .rating-stars');
+      
+      if (completedEl) {
+        completedEl.textContent = d.completedOrders || 0;
+      }
+      if (ratingEl && d.totalRatings > 0) {
+        ratingEl.textContent = d.averageRating || '—';
+        if (starsEl) {
+          const fullStars = Math.round(d.averageRating);
+          starsEl.textContent = '★'.repeat(fullStars) + '☆'.repeat(5 - fullStars);
+        }
+      }
+      
+      // Техника
+      const vehicleTypeEl = document.getElementById('driver-card-vehicle-type');
+      const capacityEl = document.getElementById('driver-card-capacity');
+      const plateEl = document.getElementById('driver-card-plate');
+      
+      if (vehicleTypeEl) {
+        vehicleTypeEl.textContent = d.vehicleType || '—';
+      }
+      if (capacityEl) {
+        capacityEl.textContent = d.loadCapacity || '—';
+      }
+      if (plateEl) {
+        plateEl.textContent = d.vehiclePlate || '—';
+      }
+    })
+    .catch(() => {
+      alert('Ошибка загрузки профиля водителя');
+    });
 }
 
 function loadMyRatings() {

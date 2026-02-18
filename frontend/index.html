@@ -199,7 +199,7 @@
 
     <div class="card" id="driver-card-contact">
       <div class="profile-block">
-        <div class="block-title">Контакт</div>
+        <div class="block-title">Контакт и рейтинг</div>
         <div class="profile-row">
           <span class="key">ФИО</span>
           <span class="val" id="driver-card-name">—</span>
@@ -211,6 +211,15 @@
         <div class="profile-row">
           <span class="key">Telegram</span>
           <span class="val" id="driver-card-telegram">—</span>
+        </div>
+        <div class="profile-row">
+          <span class="key">Перевозок</span>
+          <span class="val">0</span>
+        </div>
+        <div class="profile-row">
+          <span class="key">Рейтинг</span>
+          <span class="val rating-big">—</span>
+          <span class="rating-stars">☆☆☆☆☆</span>
         </div>
       </div>
     </div>
@@ -525,12 +534,13 @@
   <!-- Нижняя навигация прототипа -->
   <nav class="nav-tabs">
     <button type="button" data-tab="home">Главная</button>
-    <button type="button" data-tab="order">Заявка</button>
+    <button type="button" data-tab="order" data-role-required="CLIENT">Заявка</button>
     <button type="button" data-tab="orders">Заявки</button>
     <button type="button" data-tab="order-detail" style="display:none">Детали</button>
-    <button type="button" data-tab="driver-status">Статус</button>
-    <button type="button" data-tab="driver-card">Водитель</button>
-    <button type="button" data-tab="profile-client">Профиль</button>
+    <button type="button" data-tab="driver-status" data-role-required="DRIVER">Статус</button>
+    <button type="button" data-tab="driver-card" data-role-required="DRIVER">Водитель</button>
+    <button type="button" data-tab="profile-client" data-role-required="CLIENT">Профиль</button>
+    <button type="button" data-tab="profile-driver" data-role-required="DRIVER">Профиль</button>
   </nav>
 
   <script type="module" src="/src/main.js"></script>

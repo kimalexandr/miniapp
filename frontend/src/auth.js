@@ -66,6 +66,18 @@ export function goHome() {
   const roleSwitch = document.querySelector('#screen-home .role-switch');
   if (roleSwitch) roleSwitch.style.display = 'none';
   
+  // Обновляем заголовок в зависимости от роли
+  const headerEl = document.querySelector('#screen-home .page-header');
+  if (headerEl) {
+    headerEl.textContent = isDriver ? 'Курьер' : 'Главная';
+  }
+  
+  // Скрываем кнопки навигации в зависимости от роли
+  document.querySelectorAll('.nav-tabs button[data-role-required]').forEach(btn => {
+    const requiredRole = btn.getAttribute('data-role-required');
+    btn.style.display = u?.role === requiredRole ? '' : 'none';
+  });
+  
   window.showScreen('home');
 }
 
