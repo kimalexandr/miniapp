@@ -114,11 +114,13 @@ export class RatingsService {
       ? ratings.reduce((sum, r) => sum + r.score, 0) / totalCount
       : 0;
 
-    const distribution: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
-    ratings.forEach((r) => { 
-      const score = r.score as 1 | 2 | 3 | 4 | 5;
-      distribution[score] = (distribution[score] || 0) + 1; 
-    });
+    const distribution: { [key: number]: number } = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+    for (const r of ratings) {
+      const s = r.score;
+      if (s >= 1 && s <= 5) {
+        distribution[s] = distribution[s] + 1;
+      }
+    }
 
     return { averageScore: Math.round(averageScore * 10) / 10, totalCount, distribution };
   }
