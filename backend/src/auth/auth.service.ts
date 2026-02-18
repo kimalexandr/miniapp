@@ -118,19 +118,28 @@ export class AuthService {
   async chooseRole(userId: string, dto: ChooseRoleDto): Promise<{ accessToken: string }> {
     await this.users.setRole(userId, dto.role);
     const user = await this.users.findById(userId);
+    
+    // Автоматически создать профиль с данными из Telegram
     if (dto.role === 'CLIENT') {
       await this.prisma.client.upsert({
         where: { userId: userId },
-        create: { userId },
+        create: { 
+          userId,
+          contactName: [user?.firstName, user?.lastName].filter(Boolean).join(' ') || undefined,
+        },
         update: {},
       });
     } else {
       await this.prisma.driver.upsert({
         where: { userId: userId },
-        create: { userId },
+        create: { 
+          userId,
+          fullName: [user?.firstName, user?.lastName].filter(Boolean).join(' ') || undefined,
+        },
         update: {},
       });
     }
+    
     const accessToken = this.jwt.sign({ sub: userId, telegramId: String(user!.telegramId) });
     return { accessToken };
   }
