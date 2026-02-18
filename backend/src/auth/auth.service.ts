@@ -30,7 +30,17 @@ export class AuthService {
     if (!parsed?.user) throw new UnauthorizedException('Данные пользователя отсутствуют');
 
     const { id, isNew } = await this.users.findOrCreateByTelegram(parsed.user);
-    const user = await this.users.findById(id);
+    let user = await this.users.findById(id);
+    
+    // Автоматически переводим PENDING_PHONE в PENDING_ROLE (телефон больше не требуется)
+    if (user && user.status === 'PENDING_PHONE') {
+      await this.prisma.user.update({
+        where: { id },
+        data: { status: 'PENDING_ROLE' },
+      });
+      user = await this.users.findById(id);
+    }
+    
     const accessToken = this.jwt.sign({
       sub: id,
       telegramId: String(parsed.user.id),
