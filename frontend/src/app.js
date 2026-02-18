@@ -78,6 +78,9 @@ export function loadOrdersList() {
         if (u.role === 'DRIVER' && o.driverId && ['TAKEN', 'AT_WAREHOUSE', 'LOADING_DONE', 'IN_TRANSIT', 'DELIVERED'].includes(o.status)) {
           html += '<button type="button" class="btn btn-primary btn-small order-btn-status">Сменить статус</button>';
         }
+        if (o.status === 'COMPLETED' && !o.ratings?.some(r => r.raterRole === u.role)) {
+          html += '<button type="button" class="btn btn-primary btn-small order-btn-rate">Оценить</button>';
+        }
         html += `<button type="button" class="btn btn-ghost btn-small" data-go="order-detail" data-order-id="${o.id}">Подробнее</button></div></div>`;
       });
       listEl.innerHTML = html || '<p class="card-title">Нет заявок</p>';
@@ -94,6 +97,18 @@ export function loadOrdersList() {
         btn.addEventListener('click', () => {
           window._currentOrderId = item.dataset.orderId;
           showScreen('order-status-driver');
+        });
+      });
+      listEl.querySelectorAll('.order-btn-rate').forEach((btn) => {
+        const item = btn.closest('.order-item');
+        btn.addEventListener('click', () => {
+          window._currentOrderId = item.dataset.orderId;
+          const order = orders.find(o => o.id === item.dataset.orderId);
+          const titleEl = document.getElementById('rating-order-title');
+          if (titleEl && order) {
+            titleEl.textContent = `Заявка ${order.orderNumber || order.id}`;
+          }
+          showScreen('rating');
         });
       });
       listEl.querySelectorAll('[data-go="order-detail"][data-order-id]').forEach((link) => {
@@ -151,6 +166,9 @@ export function loadClientProfile() {
       set('profile-client-contact-email', p.contactEmail);
     })
     .catch(() => {});
+  
+  // Загружаем статистику рейтингов
+  loadMyRatings();
 }
 
 export function loadDriverProfile() {
@@ -164,6 +182,43 @@ export function loadDriverProfile() {
       set('profile-driver-capacity', p.loadCapacity);
       set('profile-driver-license', p.licenseNumber);
       set('profile-driver-status', p.driverStatus || '');
+    })
+    .catch(() => {});
+  
+  // Загружаем статистику рейтингов
+  loadMyRatings();
+}
+
+function loadMyRatings() {
+  api('ratings/my-stats')
+    .then((stats) => {
+      // Обновляем блок рейтинга в профиле
+      const ratingBlock = document.querySelector('#screen-profile-client .card:last-of-type, #screen-profile-driver .card:last-of-type');
+      if (!ratingBlock) return;
+      
+      if (stats.totalCount === 0) {
+        ratingBlock.querySelector('.block-title').nextElementSibling.textContent = 'Рейтинги появятся после выполненных заказов';
+        return;
+      }
+      
+      const stars = '★'.repeat(Math.round(stats.averageScore)) + '☆'.repeat(5 - Math.round(stats.averageScore));
+      let html = `<div class="profile-row">
+        <span class="key">Средний балл</span>
+        <span class="val rating-big">${stats.averageScore}</span>
+        <span class="rating-stars">${stars}</span>
+      </div>`;
+      html += `<div class="profile-row"><span class="key">Отзывов</span><span class="val">${stats.totalCount}</span></div>`;
+      
+      // Гистограмма распределения
+      if (stats.distribution) {
+        for (let i = 5; i >= 1; i--) {
+          const count = stats.distribution[i] || 0;
+          const percent = stats.totalCount > 0 ? Math.round((count / stats.totalCount) * 100) : 0;
+          html += `<div class="rating-bar-row mt-16"><span>${i}</span><span class="rating-stars">★</span><div class="bar"><span style="width:${percent}%"></span></div><span class="text-muted">${count}</span></div>`;
+        }
+      }
+      
+      ratingBlock.querySelector('.profile-block').innerHTML = `<div class="block-title">Мой рейтинг</div>` + html;
     })
     .catch(() => {});
 }
@@ -435,6 +490,31 @@ function bindMisc() {
         s.textContent = i < n ? '★' : '☆';
       });
     });
+  });
+  
+  // Обработчик отправки рейтинга
+  document.getElementById('rating-submit')?.addEventListener('click', () => {
+    const orderId = window._currentOrderId;
+    if (!orderId) { alert('Заявка не выбрана'); return; }
+    
+    let score = 0;
+    document.querySelectorAll('#rating-stars [data-star]').forEach((star, i) => {
+      if (star.textContent === '★') score = i + 1;
+    });
+    if (score === 0) { alert('Выберите оценку'); return; }
+    
+    const comment = (document.getElementById('rating-comment')?.value || '').trim();
+    
+    api('ratings', {
+      method: 'POST',
+      json: { orderId, score, comment: comment || undefined },
+    })
+      .then(() => {
+        alert('Спасибо за оценку!');
+        showScreen('orders');
+        loadOrdersList();
+      })
+      .catch((e) => alert(e?.message || 'Ошибка отправки рейтинга'));
   });
 }
 

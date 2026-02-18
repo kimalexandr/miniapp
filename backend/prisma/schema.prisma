@@ -73,9 +73,10 @@ model Client {
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
 
-  user       User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  warehouses Warehouse[]
-  orders     Order[]      @relation("OrderClient")
+  user            User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  warehouses      Warehouse[]
+  orders          Order[]      @relation("OrderClient")
+  ratingsReceived Rating[]     @relation("RatingToClient")
 
   @@map("clients")
 }
@@ -98,8 +99,9 @@ model Driver {
   createdAt         DateTime @default(now()) @map("created_at")
   updatedAt         DateTime @updatedAt @map("updated_at")
 
-  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  orders Order[] @relation("OrderDriver")
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orders          Order[]  @relation("OrderDriver")
+  ratingsReceived Rating[] @relation("RatingToDriver")
 
   @@map("drivers")
 }
@@ -151,10 +153,11 @@ model Order {
   createdAt           DateTime    @default(now()) @map("created_at")
   updatedAt           DateTime    @updatedAt @map("updated_at")
 
-  client       Client               @relation("OrderClient", fields: [clientId], references: [id], onDelete: Cascade)
-  driver       Driver?              @relation("OrderDriver", fields: [driverId], references: [id], onDelete: SetNull)
-  fromWarehouse Warehouse?          @relation("OrderFromWarehouse", fields: [fromWarehouseId], references: [id], onDelete: SetNull)
-  statusHistory OrderStatusHistory[]
+  client         Client               @relation("OrderClient", fields: [clientId], references: [id], onDelete: Cascade)
+  driver         Driver?              @relation("OrderDriver", fields: [driverId], references: [id], onDelete: SetNull)
+  fromWarehouse  Warehouse?           @relation("OrderFromWarehouse", fields: [fromWarehouseId], references: [id], onDelete: SetNull)
+  statusHistory  OrderStatusHistory[]
+  ratings        Rating[]
 
   @@map("orders")
 }
@@ -199,4 +202,23 @@ model AuditLog {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("audit_logs")
+}
+
+// Рейтинги и отзывы
+model Rating {
+  id         String   @id @default(uuid())
+  orderId    String   @map("order_id")
+  raterRole  UserRole @map("rater_role")        // кто оставил: CLIENT или DRIVER
+  targetClientId String? @map("target_client_id") // если оценка клиенту от водителя
+  targetDriverId String? @map("target_driver_id") // если оценка водителю от клиента
+  score      Int      @map("score")             // 1-5 звезд
+  comment    String?  @map("comment")           // текст отзыва
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  order        Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  targetClient Client?  @relation("RatingToClient", fields: [targetClientId], references: [id], onDelete: Cascade)
+  targetDriver Driver?  @relation("RatingToDriver", fields: [targetDriverId], references: [id], onDelete: Cascade)
+
+  @@unique([orderId, raterRole]) // один рейтинг от клиента и один от водителя на заказ
+  @@map("ratings")
 }

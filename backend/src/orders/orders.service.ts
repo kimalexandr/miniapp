@@ -71,6 +71,7 @@ export class OrdersService {
         driver: { include: { user: { select: { firstName: true, lastName: true, username: true } } } },
         fromWarehouse: true,
         statusHistory: { orderBy: { createdAt: 'desc' } },
+        ratings: { select: { raterRole: true, score: true, comment: true, createdAt: true } },
       },
     });
     if (!order) throw new NotFoundException('Заявка не найдена');
@@ -95,6 +96,7 @@ export class OrdersService {
       include: {
         driver: { include: { user: { select: { firstName: true, lastName: true } } } },
         fromWarehouse: { select: { address: true, name: true } },
+        ratings: { select: { raterRole: true } },
       },
     });
   }
@@ -121,11 +123,12 @@ export class OrdersService {
     return this.prisma.order.findMany({
       where: {
         driverId: driver.id,
-        status: { in: [OrderStatus.TAKEN, OrderStatus.AT_WAREHOUSE, OrderStatus.LOADING_DONE, OrderStatus.IN_TRANSIT, OrderStatus.DELIVERED] },
+        status: { in: [OrderStatus.TAKEN, OrderStatus.AT_WAREHOUSE, OrderStatus.LOADING_DONE, OrderStatus.IN_TRANSIT, OrderStatus.DELIVERED, OrderStatus.COMPLETED] },
       },
       orderBy: { updatedAt: 'desc' },
       include: {
         client: { include: { user: { select: { firstName: true, lastName: true } } } },
+        ratings: { select: { raterRole: true } },
       },
     });
   }
