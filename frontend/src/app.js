@@ -32,6 +32,7 @@ export function showScreen(screenId) {
   if (screenId === 'profile-driver') loadDriverProfile();
   if (screenId === 'map') loadMapData();
   if (screenId === 'order') loadOrderWarehouses();
+  if (screenId === 'driver-status') loadDriverStatus();
   if (screenId === 'order-detail' && window._currentOrderId) loadOrderDetail(window._currentOrderId);
 }
 
@@ -187,6 +188,35 @@ export function loadDriverProfile() {
   
   // Загружаем статистику рейтингов
   loadMyRatings();
+}
+
+export function loadDriverStatus() {
+  api('drivers/profile')
+    .then((p) => {
+      // Обновляем данные о грузоподъемности
+      const placesEl = document.getElementById('driver-capacity-places');
+      const weightEl = document.getElementById('driver-capacity-weight');
+      
+      if (placesEl) {
+        placesEl.textContent = p.dimensions || '—';
+      }
+      if (weightEl) {
+        weightEl.textContent = p.loadCapacity ? `${p.loadCapacity}` : '—';
+      }
+      
+      // Устанавливаем текущий статус
+      const currentStatus = p.driverStatus || 'free';
+      document.querySelectorAll('.status-card').forEach(card => {
+        card.classList.toggle('selected', card.dataset.status === currentStatus);
+      });
+      
+      // Показываем/скрываем блок догруза
+      const dogruzBlock = document.getElementById('dogruz-block');
+      if (dogruzBlock) {
+        dogruzBlock.style.display = currentStatus === 'dogruz' ? 'block' : 'none';
+      }
+    })
+    .catch(() => {});
 }
 
 function loadMyRatings() {
@@ -391,6 +421,17 @@ function bindProfiles() {
       () => alert('Не удалось получить координаты')
     );
   });
+  document.getElementById('driver-status-update-location')?.addEventListener('click', () => {
+    if (!navigator.geolocation) { alert('Геолокация недоступна'); return; }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        api('drivers/location', { method: 'PUT', json: { latitude: pos.coords.latitude, longitude: pos.coords.longitude } })
+          .then(() => alert('Геолокация обновлена'))
+          .catch((e) => alert(e?.message || 'Ошибка'));
+      },
+      () => alert('Не удалось получить координаты')
+    );
+  });
 }
 
 function bindNavigation() {
@@ -437,6 +478,19 @@ function bindMisc() {
       card.classList.add('selected');
       const block = document.getElementById('dogruz-block');
       if (block) block.style.display = card.dataset.status === 'dogruz' ? 'block' : 'none';
+      
+      // Сохраняем статус в профиль водителя
+      const status = card.dataset.status;
+      api('drivers/profile', {
+        method: 'PUT',
+        json: { driverStatus: status },
+      })
+        .then(() => {
+          // Статус обновлен
+        })
+        .catch((e) => {
+          alert(e?.message || 'Ошибка обновления статуса');
+        });
     });
   });
   document.querySelectorAll('.chips').forEach((container) => {
