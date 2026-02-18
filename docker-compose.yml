@@ -10,7 +10,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U courier -d courier_miniapp"]
       interval: 5s
@@ -31,7 +31,7 @@ services:
       JWT_EXPIRES_IN: 7d
       YANDEX_MAPS_API_KEY: ${YANDEX_MAPS_API_KEY:-}
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     depends_on:
       postgres:
         condition: service_healthy
@@ -43,7 +43,7 @@ services:
     volumes:
       - ./frontend/nginx-compose.conf:/etc/nginx/conf.d/default.conf:ro
     ports:
-      - "80:80"
+      - "127.0.0.1:8080:80"
     depends_on:
       - backend
 
