@@ -39,7 +39,7 @@ export class UsersService {
         firstName: tg.first_name,
         lastName: tg.last_name ?? null,
         languageCode: tg.language_code ?? null,
-        status: UserStatus.PENDING_PHONE,
+        status: UserStatus.PENDING_ROLE,
       },
     });
     return { id: created.id, isNew: true };

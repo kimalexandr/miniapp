@@ -15,8 +15,7 @@ export function startAuth() {
       api('users/me')
         .then((user) => {
           window.AppUser = user;
-          if (user.status === 'PENDING_PHONE') window.showScreen('auth-phone');
-          else if (user.status === 'PENDING_ROLE') window.showScreen('auth-choose-role');
+          if (user.status === 'PENDING_ROLE') window.showScreen('auth-choose-role');
           else window.goHome();
         })
         .catch(() => {
@@ -33,8 +32,7 @@ export function startAuth() {
     .then((res) => {
       setToken(res.accessToken);
       window.AppUser = res.user;
-      if (res.user.status === 'PENDING_PHONE') window.showScreen('auth-phone');
-      else if (res.user.status === 'PENDING_ROLE' || res.isNew) window.showScreen('auth-choose-role');
+      if (res.user.status === 'PENDING_ROLE' || res.isNew) window.showScreen('auth-choose-role');
       else window.goHome();
     })
     .catch((err) => {
