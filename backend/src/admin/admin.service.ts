@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException, ForbiddenException } from '@nestjs/common';
+import { Injectable, ForbiddenException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
@@ -15,7 +15,7 @@ export class AdminService {
     const adminEmail = this.config.get<string>('ADMIN_EMAIL', 'ya@ya.ru');
     const adminPassword = this.config.get<string>('ADMIN_PASSWORD', 'kAlkiujn7');
     if (email !== adminEmail || password !== adminPassword) {
-      throw new UnauthorizedException('Неверный логин или пароль');
+      throw new ForbiddenException('Неверный логин или пароль');
     }
     const accessToken = this.jwt.sign({
       sub: 'admin',

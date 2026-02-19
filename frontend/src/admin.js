@@ -23,7 +23,7 @@ async function api(path, options = {}) {
     headers,
     body: options.json ? JSON.stringify(options.json) : options.body,
   });
-  if (res.status === 401) {
+  if (res.status === 401 && path !== 'admin/login') {
     setToken(null);
     showLogin();
     throw new Error('Сессия истекла');

@@ -10,6 +10,7 @@ export class ConfigController {
     return {
       telegramBotUsername: this.config.get<string>('TELEGRAM_BOT_USERNAME', 'drivergo_bot'),
       yandexMapsApiKey: this.config.get<string>('YANDEX_MAPS_API_KEY', ''),
+      yandexSuggestApiKey: this.config.get<string>('YANDEX_SUGGEST_API_KEY', ''),
     };
   }
 }

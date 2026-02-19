@@ -32,6 +32,7 @@ export function showScreen(screenId) {
   if (screenId === 'profile-driver') loadDriverProfile();
   if (screenId === 'map') loadMapData();
   if (screenId === 'order') loadOrderWarehouses();
+  if (screenId === 'order' || screenId === 'profile-client') initAddressSuggests();
   if (screenId === 'driver-status') loadDriverStatus();
   if (screenId === 'driver-card' && window._currentDriverId) loadDriverCard(window._currentDriverId);
   if (screenId === 'order-detail' && window._currentOrderId) loadOrderDetail(window._currentOrderId);
@@ -283,8 +284,8 @@ export function loadProfileClientView() {
 }
 
 export function loadClientProfile() {
-  api('clients/profile')
-    .then((p) => {
+  Promise.all([api('clients/profile').catch(() => ({})), api('warehouses').catch(() => [])])
+    .then(([p, warehouses]) => {
       const set = (id, v) => { const e = document.getElementById(id); if (e) e.value = v || ''; };
       set('profile-client-company', p.companyName);
       set('profile-client-type', p.companyType);
@@ -295,10 +296,17 @@ export function loadClientProfile() {
       set('profile-client-contact-name', p.contactName);
       set('profile-client-contact-phone', p.contactPhone);
       set('profile-client-contact-email', p.contactEmail);
+      const firstWarehouse = Array.isArray(warehouses) && warehouses[0];
+      if (firstWarehouse) {
+        set('profile-warehouse-name', firstWarehouse.name);
+        set('profile-warehouse-address', firstWarehouse.address);
+      } else {
+        set('profile-warehouse-name', '');
+        set('profile-warehouse-address', '');
+      }
     })
     .catch(() => {});
-  
-  // Загружаем статистику рейтингов
+
   loadMyRatings();
 }
 
@@ -438,15 +446,20 @@ function loadMyRatings() {
 }
 
 let yandexMapInstance = null;
+let addressSuggestInited = false;
+const ADDRESS_SUGGEST_IDS = ['order-from-address', 'order-to-address', 'profile-warehouse-address'];
 
-function loadYandexScript(apiKey) {
+function loadYandexScript(apiKey, suggestApiKey) {
+  const suggestKey = suggestApiKey != null && suggestApiKey !== '' ? suggestApiKey : apiKey;
   return new Promise((resolve, reject) => {
     if (window.ymaps) {
       window.ymaps.ready(resolve);
       return;
     }
     const script = document.createElement('script');
-    script.src = `https://api-maps.yandex.ru/2.1/?apikey=${encodeURIComponent(apiKey)}&lang=ru_RU`;
+    let url = `https://api-maps.yandex.ru/2.1/?apikey=${encodeURIComponent(apiKey)}&lang=ru_RU`;
+    if (suggestKey) url += `&suggest_apikey=${encodeURIComponent(suggestKey)}`;
+    script.src = url;
     script.async = true;
     script.onload = () => window.ymaps.ready(resolve);
     script.onerror = () => reject(new Error('Не удалось загрузить Яндекс.Карты'));
@@ -500,6 +513,37 @@ function initYandexMap(containerId, data) {
   yandexMapInstance = map;
 }
 
+let addressSuggestViews = {};
+
+function initAddressSuggests() {
+  if (addressSuggestInited) return;
+  addressSuggestInited = true;
+  api('config')
+    .then((config) => {
+      const apiKey = config.yandexMapsApiKey || config.yandexSuggestApiKey || window.APP_YANDEX_MAPS_API_KEY || '';
+      const suggestKey = config.yandexSuggestApiKey || config.yandexMapsApiKey || window.APP_YANDEX_MAPS_API_KEY || '';
+      if (!apiKey && !suggestKey) return;
+      loadYandexScript(apiKey || suggestKey, suggestKey)
+        .then(() => {
+          if (!window.ymaps || !window.ymaps.load) return;
+          return window.ymaps.load(['SuggestView']);
+        })
+        .then(() => {
+          if (!window.ymaps.SuggestView) return;
+          ADDRESS_SUGGEST_IDS.forEach((id) => {
+            if (addressSuggestViews[id]) return;
+            const el = document.getElementById(id);
+            if (!el) return;
+            try {
+              addressSuggestViews[id] = new window.ymaps.SuggestView(id, { results: 7 });
+            } catch (_) {}
+          });
+        })
+        .catch(() => {});
+    })
+    .catch(() => {});
+}
+
 export function loadMapData() {
   Promise.all([api('config').catch(() => ({})), api('map').catch(() => ({ orders: [], drivers: [] }))])
     .then(([config, data]) => {
@@ -518,7 +562,7 @@ export function loadMapData() {
         container.innerHTML = '<div class="map-placeholder" style="height:100%;display:flex;align-items:center;justify-content:center;color:var(--text-muted);font-size:14px;">Укажите YANDEX_MAPS_API_KEY в настройках сервера</div>';
         return;
       }
-      loadYandexScript(apiKey)
+      loadYandexScript(apiKey, config.yandexSuggestApiKey)
         .then(() => initYandexMap('yandex-map-container', data))
         .catch((err) => {
           container.innerHTML = `<div class="map-placeholder" style="height:100%;display:flex;align-items:center;justify-content:center;color:#f87171;font-size:14px;">${err?.message || 'Ошибка загрузки карты'}</div>`;
@@ -576,7 +620,9 @@ function bindOrderForm() {
 
 function bindProfiles() {
   document.getElementById('profile-client-save')?.addEventListener('click', () => {
-    api('clients/profile', {
+    const warehouseName = getVal('profile-warehouse-name');
+    const warehouseAddress = getVal('profile-warehouse-address');
+    const saveClient = api('clients/profile', {
       method: 'PUT',
       json: {
         companyName: getVal('profile-client-company'),
@@ -589,8 +635,29 @@ function bindProfiles() {
         contactPhone: getVal('profile-client-contact-phone') || undefined,
         contactEmail: getVal('profile-client-contact-email') || undefined,
       },
-    })
-      .then(() => alert('Сохранено'))
+    });
+    const saveWarehouse = () => {
+      if (!warehouseAddress.trim()) return Promise.resolve();
+      return api('warehouses')
+        .then((list) => {
+          if (Array.isArray(list) && list.length > 0) {
+            return api('warehouses/' + list[0].id, {
+              method: 'PUT',
+              json: { name: warehouseName || undefined, address: warehouseAddress },
+            });
+          }
+          return api('warehouses', {
+            method: 'POST',
+            json: { name: warehouseName || undefined, address: warehouseAddress },
+          });
+        });
+    };
+    saveClient
+      .then(() => saveWarehouse())
+      .then(() => {
+        loadOrderWarehouses();
+        alert('Сохранено');
+      })
       .catch((e) => alert(e?.message || 'Ошибка'));
   });
   document.getElementById('profile-client-get-telegram-phone')?.addEventListener('click', () => {

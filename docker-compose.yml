@@ -27,6 +27,7 @@ services:
       PORT: 3000
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME:-drivergo_bot}
+      PUBLIC_URL: ${PUBLIC_URL:-}
       JWT_SECRET: ${JWT_SECRET:-change-me-min-32-chars}
       JWT_EXPIRES_IN: 7d
       YANDEX_MAPS_API_KEY: ${YANDEX_MAPS_API_KEY:-}

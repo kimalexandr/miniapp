@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnApplicationBootstrap } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as crypto from 'crypto';
 
@@ -65,12 +65,35 @@ export interface TelegramUser {
  * Вызывается при /start или любом сообщении от пользователя без телефона.
  */
 @Injectable()
-export class TelegramBotService {
+export class TelegramBotService implements OnApplicationBootstrap {
   private readonly botToken: string;
   private readonly apiBase = 'https://api.telegram.org/bot';
 
   constructor(private readonly config: ConfigService) {
     this.botToken = this.config.get<string>('TELEGRAM_BOT_TOKEN', '');
+  }
+
+  async onApplicationBootstrap() {
+    await this.registerWebhook();
+  }
+
+  /** Регистрирует webhook в Telegram при старте (токен и PUBLIC_URL из .env). */
+  async registerWebhook(): Promise<void> {
+    const publicUrl = this.config.get<string>('PUBLIC_URL', '').replace(/\/$/, '');
+    if (!this.botToken || !publicUrl) return;
+    const webhookUrl = `${publicUrl}/api/auth/telegram-webhook`;
+    const url = `${this.apiBase}${this.botToken}/setWebhook?url=${encodeURIComponent(webhookUrl)}`;
+    try {
+      const res = await fetch(url);
+      const data = (await res.json()) as { ok?: boolean; description?: string };
+      if (data.ok) {
+        console.log('[Telegram] Webhook зарегистрирован:', webhookUrl);
+      } else {
+        console.warn('[Telegram] setWebhook:', data.description || res.statusText);
+      }
+    } catch (err) {
+      console.warn('[Telegram] Ошибка регистрации webhook:', (err as Error).message);
+    }
   }
 
   async sendContactKeyboard(chatId: number): Promise<void> {
