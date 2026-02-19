@@ -62,6 +62,12 @@ export class AdminController {
     return this.admin.listOrders();
   }
 
+  @Delete('orders/:id')
+  @UseGuards(JwtAuthGuard, AdminGuard)
+  async deleteOrder(@Param('id') id: string) {
+    return this.admin.deleteOrder(id);
+  }
+
   @Get('drivers-for-filters')
   @UseGuards(JwtAuthGuard, AdminGuard)
   async listDriversForFilters() {
@@ -72,5 +78,11 @@ export class AdminController {
   @UseGuards(JwtAuthGuard, AdminGuard)
   async listClientsForFilters() {
     return this.admin.listClientsForFilters();
+  }
+
+  @Post('clear-database')
+  @UseGuards(JwtAuthGuard, AdminGuard)
+  async clearDatabase() {
+    return this.admin.clearDatabase();
   }
 }

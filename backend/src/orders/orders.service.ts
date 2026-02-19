@@ -296,6 +296,25 @@ export class OrdersService {
         data: { orderId, status, comment: comment ?? status, changedByUserId: driverUserId },
       }),
     ]);
+    if (status === OrderStatus.COMPLETED && order.driverId) {
+      const agreedPrice = order.agreedPrice ?? order.price;
+      if (agreedPrice != null) {
+        const existing = await this.prisma.driverEarning.findUnique({
+          where: { orderId },
+        });
+        if (!existing) {
+          await this.prisma.driverEarning.create({
+            data: {
+              driverId: order.driverId,
+              orderId: order.id,
+              amount: agreedPrice,
+              currency: order.currency ?? 'RUB',
+              status: EarningStatus.CONFIRMED,
+            },
+          });
+        }
+      }
+    }
     await this.audit.log(driverUserId, 'status_changed', 'Order', orderId, { status });
     return this.findById(orderId, driverUserId);
   }

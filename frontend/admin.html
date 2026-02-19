@@ -124,6 +124,12 @@
       <p class="error" id="client-report-error"></p>
       <div id="client-report-result"></div>
     </div>
+    <div style="margin-top: 32px; padding: 20px; border: 1px solid #dc2626; border-radius: 8px; background: rgba(220,38,38,0.08);">
+      <h2 style="color: #f87171; margin-top: 0;">Очистка базы данных</h2>
+      <p style="color: #a3a3a3; margin-bottom: 12px;">Удалит всех пользователей, клиентов, водителей, заявки и склады. Состояние как после первого развёртывания.</p>
+      <button type="button" class="btn-danger" id="admin-clear-db-btn">Очистить базу данных</button>
+      <p class="error" id="clear-db-error"></p>
+    </div>
   </div>
 
   <script type="module" src="/src/admin.js"></script>

@@ -173,6 +173,38 @@ export class AdminService {
     }));
   }
 
+  async deleteOrder(id: string): Promise<{ success: true }> {
+    await this.prisma.order.delete({ where: { id } });
+    return { success: true };
+  }
+
+  /**
+   * Очистка БД: удаляются заявки, склады, клиенты, водители и пользователи.
+   * Состояние как после первого развёртывания (без клиентов, водителей, заказов).
+   */
+  async clearDatabase(): Promise<{ success: true; deleted: Record<string, number> }> {
+    const deleted: Record<string, number> = {};
+    const r = (name: string, n: { count: number }) => {
+      deleted[name] = n.count;
+      return n;
+    };
+
+    await this.prisma.$transaction(async (tx) => {
+      r('driverEarnings', await tx.driverEarning.deleteMany());
+      r('ratings', await tx.rating.deleteMany());
+      r('orderStatusHistory', await tx.orderStatusHistory.deleteMany());
+      r('orders', await tx.order.deleteMany());
+      r('warehouses', await tx.warehouse.deleteMany());
+      r('drivers', await tx.driver.deleteMany());
+      r('clients', await tx.client.deleteMany());
+      r('phoneVerifications', await tx.phoneVerification.deleteMany());
+      r('auditLogs', await tx.auditLog.deleteMany());
+      r('users', await tx.user.deleteMany());
+    });
+
+    return { success: true, deleted };
+  }
+
   async getDriverEarningsReport(params: DriverEarningsReportParams): Promise<DriverEarningsReport> {
     const where: { status: OrderStatus; driverId?: string; clientId?: string; updatedAt?: { gte?: Date; lte?: Date } } = {
       status: OrderStatus.COMPLETED,

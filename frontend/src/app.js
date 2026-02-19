@@ -863,9 +863,35 @@ export function loadProfileOrdersDriversMap() {
       const { data } = result;
       const orders = (data.orders || []).filter((o) => o.lat != null && o.lng != null);
       const drivers = (data.drivers || []).filter((d) => d.latitude != null && d.longitude != null);
+      const listEl = document.getElementById('profile-client-drivers-list');
+      const renderDriversList = (list) => {
+        if (!listEl) return;
+        if (!list.length) {
+          listEl.innerHTML = '<p class="card-title text-muted">Нет водителей на карте</p>';
+          return;
+        }
+        let html = '';
+        list.forEach((d) => {
+          const name = [d.user?.firstName, d.user?.lastName].filter(Boolean).join(' ') || 'Водитель';
+          const loc = d.latitude != null && d.longitude != null ? 'На карте' : 'Нет геолокации';
+          html += `<div class="order-item" data-go="driver-card" data-driver-id="${d.id}" style="cursor:pointer">
+            <div class="route">${escapeHtml(name)}</div>
+            <div class="meta">${escapeHtml(d.driverStatus || '—')} · ${loc}</div>
+          </div>`;
+        });
+        listEl.innerHTML = html;
+        listEl.querySelectorAll('[data-go="driver-card"][data-driver-id]').forEach((el) => {
+          el.addEventListener('click', () => {
+            window._currentDriverId = el.dataset.driverId;
+            loadDriverCard(el.dataset.driverId);
+            showScreen('driver-card');
+          });
+        });
+      };
       if (orders.length + drivers.length === 0) {
         container.innerHTML = 'Нет заявок и водителей с геолокацией';
         container.style.display = 'flex';
+        renderDriversList([]);
         return;
       }
       container.innerHTML = '';
@@ -909,12 +935,15 @@ export function loadProfileOrdersDriversMap() {
         if (bounds) map.setBounds(bounds, { checkZoomRange: true, zoomMargin: 50 });
       }
       profileOrdersDriversMapInstance = map;
+      renderDriversList(drivers);
     })
     .catch(() => {
       if (container) {
         container.innerHTML = 'Ошибка загрузки карты';
         container.style.display = 'flex';
       }
+      const listEl = document.getElementById('profile-client-drivers-list');
+      if (listEl) listEl.innerHTML = '<p class="card-title text-muted">Ошибка загрузки</p>';
     });
 }
 

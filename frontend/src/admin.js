@@ -121,7 +121,7 @@ function loadOrders() {
         html += `<td>${o.price != null ? o.price + ' ₽' : '—'}</td>`;
         html += `<td>${escapeHtml(o.paymentType || '—')}</td>`;
         html += `<td>${escapeHtml(driverName)}</td>`;
-        html += `<td><button type="button" class="btn-ghost order-toggle-detail" data-id="${o.id}">▼</button></td>`;
+        html += `<td><button type="button" class="btn-ghost order-toggle-detail" data-id="${o.id}">▼</button> <button type="button" class="btn-ghost order-delete" data-id="${o.id}" data-number="${escapeHtml((o.orderNumber || o.id).toString())}" title="Удалить заявку">Удалить</button></td>`;
         html += '</tr>';
         html += `<tr class="order-detail-row" id="${detailId}" data-order-id="${o.id}"><td colspan="13" class="order-detail-cell">`;
         html += '<div class="grid">';
@@ -145,6 +145,16 @@ function loadOrders() {
             row.classList.toggle('expanded');
             btn.textContent = row.classList.contains('expanded') ? '▲' : '▼';
           }
+        });
+      });
+      container.querySelectorAll('.order-delete').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const id = btn.dataset.id;
+          const number = btn.dataset.number || id;
+          if (!confirm('Удалить заявку ' + number + '? Это действие нельзя отменить.')) return;
+          api('admin/orders/' + id, { method: 'DELETE' })
+            .then(() => loadOrders())
+            .catch((e) => { errEl.textContent = e?.message || 'Ошибка удаления'; });
         });
       });
     })
@@ -343,6 +353,26 @@ document.querySelectorAll('.admin-tab').forEach((btn) => {
 
 document.getElementById('driver-report-apply')?.addEventListener('click', applyDriverReport);
 document.getElementById('client-report-apply')?.addEventListener('click', applyClientReport);
+
+document.getElementById('admin-clear-db-btn')?.addEventListener('click', () => {
+  const errEl = document.getElementById('clear-db-error');
+  errEl.textContent = '';
+  if (!confirm('Удалить всех пользователей, клиентов, водителей, заявки и склады? Введите "ОЧИСТИТЬ" для подтверждения.')) return;
+  const confirmText = prompt('Введите ОЧИСТИТЬ для подтверждения:');
+  if (confirmText?.trim() !== 'ОЧИСТИТЬ') {
+    errEl.textContent = 'Подтверждение отменено.';
+    return;
+  }
+  api('admin/clear-database', { method: 'POST' })
+    .then((res) => {
+      alert('База очищена. Удалено: ' + (res.deleted ? Object.entries(res.deleted).map(([k, v]) => k + ': ' + v).join(', ') : '—'));
+      loadUsers();
+      loadOrders();
+    })
+    .catch((e) => {
+      errEl.textContent = e?.message || 'Ошибка очистки';
+    });
+});
 
 if (getToken()) {
   showUsers();
