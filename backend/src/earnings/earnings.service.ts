@@ -40,17 +40,18 @@ export class EarningsService {
 
     const earnings = await this.prisma.driverEarning.findMany({
       where,
-      include: { order: { select: { id: true, updatedAt: true } } },
+      include: { order: { select: { id: true, orderNumber: true, updatedAt: true } } },
       orderBy: { createdAt: 'desc' },
     });
 
     let totalAmount = 0;
-    const orders: { id: string; agreedPrice: number; completedAt: Date }[] = [];
+    const orders: { id: string; orderNumber?: string; agreedPrice: number; completedAt: Date }[] = [];
     for (const e of earnings) {
       const amount = e.amount instanceof Decimal ? Number(e.amount) : Number(e.amount);
       totalAmount += amount;
       orders.push({
         id: e.orderId,
+        orderNumber: e.order?.orderNumber,
         agreedPrice: amount,
         completedAt: e.order?.updatedAt ?? e.createdAt,
       });

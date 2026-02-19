@@ -52,6 +52,14 @@ export class UsersService {
     });
   }
 
+  /** Обновить телефон без сброса роли (для «Поделиться номером» внутри Mini App). */
+  async updatePhoneInProfile(userId: string, phone: string): Promise<void> {
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { phone, phoneVerifiedAt: new Date() },
+    });
+  }
+
   async setRole(userId: string, role: UserRole): Promise<void> {
     await this.prisma.user.update({
       where: { id: userId },

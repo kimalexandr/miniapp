@@ -89,6 +89,28 @@ export class AuthService {
   }
 
   /**
+   * Установить телефон из «Поделиться номером» внутри Mini App (без перехода в чат).
+   * Не сбрасывает роль; обновляет contactPhone у клиента при наличии.
+   */
+  async setPhoneFromMiniappShare(userId: string, rawPhone: string): Promise<{ success: boolean }> {
+    const phone = this.normalizePhoneE164(rawPhone);
+    if (!phone) throw new BadRequestException('Некорректный номер телефона');
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: { client: true },
+    });
+    if (!user) throw new BadRequestException('Пользователь не найден');
+    await this.users.updatePhoneInProfile(userId, phone);
+    if (user.client) {
+      await this.prisma.client.update({
+        where: { id: user.client.id },
+        data: { contactPhone: phone },
+      });
+    }
+    return { success: true };
+  }
+
+  /**
    * Установить телефон пользователя из контакта Telegram (webhook бота).
    * Номер нормализуется к E.164; также обновляется contactPhone в профиле клиента при наличии.
    */

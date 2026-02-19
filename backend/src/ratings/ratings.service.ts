@@ -70,13 +70,13 @@ export class RatingsService {
 
   async getDriverRatings(driverId: string) {
     const ratings = await this.prisma.rating.findMany({
-      where: { targetDriverId: driverId },
+      where: { targetDriverId: driverId, raterRole: 'CLIENT' },
       include: {
         order: {
-          select: {
-            orderNumber: true,
-            toAddress: true,
-            createdAt: true,
+          include: {
+            client: {
+              select: { companyName: true },
+            },
           },
         },
       },
@@ -86,6 +86,16 @@ export class RatingsService {
 
     const stats = await this.calculateStats(driverId, 'DRIVER');
     return { ratings, stats };
+  }
+
+  /** Отзывы для текущего водителя (от складов/клиентов) */
+  async getMyDriverRatings(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: { driver: true },
+    });
+    if (!user?.driver) return { ratings: [], stats: { averageScore: 0, totalCount: 0, distribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 } } };
+    return this.getDriverRatings(user.driver.id);
   }
 
   async getMyStats(userId: string) {

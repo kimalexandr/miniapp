@@ -45,4 +45,9 @@ export class ClientProfileDto {
   @IsEmail()
   @MaxLength(255)
   contactEmail?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  preferredPaymentType?: string;
 }

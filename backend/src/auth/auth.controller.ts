@@ -50,6 +50,13 @@ export class AuthController {
     return this.auth.requestTelegramPhone(payload.userId);
   }
 
+  @Post('set-phone-from-miniapp')
+  @UseGuards(JwtAuthGuard)
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  async setPhoneFromMiniapp(@CurrentUser() payload: JwtPayload, @Body() body: { phone: string }) {
+    return this.auth.setPhoneFromMiniappShare(payload.userId, body.phone);
+  }
+
   /** Webhook для приёма контакта от Telegram Bot (кнопка «Поделиться номером»). */
   @Post('telegram-webhook')
   async telegramWebhook(@Body() update: TelegramUpdate) {

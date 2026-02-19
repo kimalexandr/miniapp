@@ -30,6 +30,7 @@ export class ClientsService {
         contactName: dto.contactName,
         contactPhone: dto.contactPhone,
         contactEmail: dto.contactEmail,
+        preferredPaymentType: dto.preferredPaymentType,
       },
     });
   }

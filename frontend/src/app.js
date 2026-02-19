@@ -54,7 +54,7 @@ export function renderOrderStatusBadge(status) {
 }
 
 const PROTECTED_SCREENS = [
-  'home', 'order', 'orders', 'order-detail', 'map',
+  'home', 'order', 'orders', 'order-detail', 'map', 'earnings',
   'profile-client', 'profile-driver', 'profile-client-view',
   'order-status-driver', 'driver-status', 'driver-card', 'chat', 'dispute', 'rating',
 ];
@@ -83,6 +83,7 @@ export function showScreen(screenId) {
   if (screenId === 'profile-client') loadClientProfile();
   if (screenId === 'profile-driver') loadDriverProfile();
   if (screenId === 'map') loadMapData();
+  if (screenId === 'earnings') loadEarnings();
   if (screenId === 'order') {
     loadOrderWarehouses();
     const cancelOrderBtn = document.getElementById('order-cancel-order');
@@ -411,20 +412,42 @@ export function loadProfileClientView() {
     if (val) val.textContent = text || '—';
   }
 
-  Promise.all([api('clients/profile').catch(() => ({})), api('warehouses').catch(() => [])])
-    .then(([profile, warehouses]) => {
+  const ratingEl = document.getElementById('client-view-rating');
+  if (ratingEl) ratingEl.innerHTML = '<p class="card-title text-muted">Загрузка…</p>';
+
+  Promise.all([
+    api('clients/profile').catch(() => ({})),
+    api('warehouses').catch(() => []),
+    api('ratings/my-stats').catch(() => ({ averageScore: 0, totalCount: 0 })),
+  ])
+    .then(([profile, warehouses, stats]) => {
       setViewRowVal('client-view-company', profile.companyName);
       setViewRowVal('client-view-inn', profile.inn);
       const firstWarehouse = Array.isArray(warehouses) && warehouses[0];
       setViewRowVal('client-view-address', firstWarehouse?.address);
       setViewVal('client-view-schedule', firstWarehouse?.workSchedule);
-      setViewVal('client-view-parking', ''); // в API нет поля парковки
+      setViewVal('client-view-parking', '');
       setViewVal('client-view-phone', profile.contactPhone);
       const telegram = window.AppUser?.username;
       setViewVal('client-view-telegram', telegram ? '@' + telegram : '—');
-      setViewVal('client-view-payment', ''); // в API нет поля форма оплаты в профиле
+      setViewVal('client-view-payment', profile.preferredPaymentType || '—');
+
+      if (ratingEl) {
+        if (stats?.totalCount > 0) {
+          const stars = '★'.repeat(Math.round(stats.averageScore)) + '☆'.repeat(5 - Math.round(stats.averageScore));
+          ratingEl.innerHTML = `
+            <div class="profile-row"><span class="key">Средний балл</span><span class="val rating-big">${stats.averageScore}</span></div>
+            <div class="profile-row"><span class="key">Отзывов</span><span class="val">${stats.totalCount}</span></div>
+            <div class="profile-row"><span class="rating-stars">${stars}</span></div>
+          `;
+        } else {
+          ratingEl.innerHTML = '<p class="card-title text-muted">Рейтинги появятся после выполненных заказов</p>';
+        }
+      }
     })
-    .catch(() => {});
+    .catch(() => {
+      if (ratingEl) ratingEl.innerHTML = '<p class="card-title text-muted">Рейтинги появятся после выполненных заказов</p>';
+    });
 }
 
 export function loadClientProfile() {
@@ -440,6 +463,8 @@ export function loadClientProfile() {
       set('profile-client-contact-name', p.contactName);
       set('profile-client-contact-phone', p.contactPhone);
       set('profile-client-contact-email', p.contactEmail);
+      const paymentSelect = document.getElementById('profile-client-payment-type');
+      if (paymentSelect) paymentSelect.value = p.preferredPaymentType || 'Наличные';
       const firstWarehouse = Array.isArray(warehouses) && warehouses[0];
       if (firstWarehouse) {
         set('profile-warehouse-name', firstWarehouse.name);
@@ -452,7 +477,7 @@ export function loadClientProfile() {
     })
     .catch(() => {});
 
-  loadMyRatings();
+  loadMyRatings('CLIENT');
   loadProfileOrdersDriversMap();
 }
 
@@ -467,11 +492,22 @@ export function loadDriverProfile() {
       set('profile-driver-capacity', p.loadCapacity);
       set('profile-driver-license', p.licenseNumber);
       set('profile-driver-status', p.driverStatus || '');
+
+      const phoneDisplay = document.getElementById('profile-driver-phone-display');
+      const phoneVal = document.getElementById('profile-driver-phone-value');
+      if (phoneDisplay && phoneVal) {
+        if (p.phone) {
+          phoneVal.textContent = p.phone;
+          phoneDisplay.style.display = 'flex';
+        } else {
+          phoneDisplay.style.display = 'none';
+        }
+      }
     })
     .catch(() => {});
   
-  // Загружаем статистику рейтингов
-  loadMyRatings();
+  loadMyRatings('DRIVER');
+  loadDriverReviews();
 }
 
 export function loadDriverStatus() {
@@ -557,27 +593,32 @@ export function loadDriverCard(driverId) {
     });
 }
 
-function loadMyRatings() {
+function loadMyRatings(role) {
   api('ratings/my-stats')
     .then((stats) => {
-      // Обновляем блок рейтинга в профиле
-      const ratingBlock = document.querySelector('#screen-profile-client .card:last-of-type, #screen-profile-driver .card:last-of-type');
+      const ratingBlock = role === 'DRIVER'
+        ? document.getElementById('profile-driver-rating-card')
+        : document.querySelector('#screen-profile-client .card:last-of-type');
       if (!ratingBlock) return;
-      
+
+      const blockEl = ratingBlock.querySelector('.profile-block');
+      if (!blockEl) return;
+
       if (stats.totalCount === 0) {
-        ratingBlock.querySelector('.block-title').nextElementSibling.textContent = 'Рейтинги появятся после выполненных заказов';
+        const placeholder = blockEl.querySelector('.block-title')?.nextElementSibling;
+        if (placeholder) placeholder.textContent = 'Рейтинги появятся после выполненных заказов';
         return;
       }
-      
+
       const stars = '★'.repeat(Math.round(stats.averageScore)) + '☆'.repeat(5 - Math.round(stats.averageScore));
+      const title = role === 'DRIVER' ? 'Мой рейтинг (от складов)' : 'Мой рейтинг';
       let html = `<div class="profile-row">
         <span class="key">Средний балл</span>
         <span class="val rating-big">${stats.averageScore}</span>
         <span class="rating-stars">${stars}</span>
       </div>`;
       html += `<div class="profile-row"><span class="key">Отзывов</span><span class="val">${stats.totalCount}</span></div>`;
-      
-      // Гистограмма распределения
+
       if (stats.distribution) {
         for (let i = 5; i >= 1; i--) {
           const count = stats.distribution[i] || 0;
@@ -585,10 +626,47 @@ function loadMyRatings() {
           html += `<div class="rating-bar-row mt-16"><span>${i}</span><span class="rating-stars">★</span><div class="bar"><span style="width:${percent}%"></span></div><span class="text-muted">${count}</span></div>`;
         }
       }
-      
-      ratingBlock.querySelector('.profile-block').innerHTML = `<div class="block-title">Мой рейтинг</div>` + html;
+
+      blockEl.innerHTML = `<div class="block-title">${title}</div>` + html;
     })
     .catch(() => {});
+}
+
+function loadDriverReviews() {
+  const container = document.getElementById('profile-driver-reviews-container');
+  const listEl = document.getElementById('profile-driver-reviews-list');
+  if (!container || !listEl) return;
+
+  api('ratings/driver/me')
+    .then((data) => {
+      const ratings = data.ratings || [];
+      if (ratings.length === 0) {
+        listEl.style.display = 'none';
+        return;
+      }
+
+      listEl.style.display = 'block';
+      let html = '';
+      ratings.forEach((r) => {
+        const warehouse = r.order?.client?.companyName || 'Склад';
+        const date = r.createdAt ? new Date(r.createdAt).toLocaleString('ru', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
+        const stars = '★'.repeat(r.score || 0) + '☆'.repeat(5 - (r.score || 0));
+        const comment = r.comment ? escapeHtml(r.comment) : '';
+        const orderNum = r.order?.orderNumber || '';
+        html += `<div class="review-card">
+          <div class="review-head">
+            <span class="review-stars">${stars}</span>
+            <span class="review-date">${date}${orderNum ? ' · ' + orderNum : ''}</span>
+          </div>
+          <div class="card-title mb-8">${escapeHtml(warehouse)}</div>
+          ${comment ? `<div class="review-text">${comment}</div>` : ''}
+        </div>`;
+      });
+      container.innerHTML = html;
+    })
+    .catch(() => {
+      listEl.style.display = 'none';
+    });
 }
 
 let yandexMapInstance = null;
@@ -678,35 +756,50 @@ export function updateProfileWarehouseMap() {
   }
   if (!window.ymaps) {
     container.innerHTML = 'Загрузка карты…';
+    container.style.display = 'flex';
     return;
   }
   container.innerHTML = '';
   container.style.display = 'block';
-  window.ymaps
-    .geocode(address, { results: 1 })
-    .then((res) => {
-      const first = res.geoObjects.get(0);
-      if (!first) {
-        container.innerHTML = 'Адрес не найден';
+
+  const doGeocode = () => {
+    let searchAddr = address;
+    if (!address.toLowerCase().includes('россия') && !address.toLowerCase().includes('russia')) {
+      searchAddr = address + ', Россия';
+    }
+    const opts = { results: 5 };
+    if (address.toLowerCase().includes('москва') || address.toLowerCase().includes('moscow')) {
+      opts.boundedBy = [[55.49, 37.32], [56.01, 37.96]];
+    }
+    return window.ymaps.geocode(searchAddr, opts);
+  };
+
+  window.ymaps.ready(() => {
+    doGeocode()
+      .then((res) => {
+        const first = res.geoObjects.get(0);
+        if (!first) {
+          container.innerHTML = 'Адрес не найден';
+          container.style.display = 'flex';
+          return;
+        }
+        const coords = first.geometry.getCoordinates();
+        const map = new window.ymaps.Map('profile-warehouse-map', {
+          center: coords,
+          zoom: 16,
+          controls: ['zoomControl', 'typeSelector'],
+        });
+        const placemark = new window.ymaps.Placemark(coords, {
+          iconCaption: address.length > 40 ? address.slice(0, 40) + '…' : address,
+        });
+        map.geoObjects.add(placemark);
+        profileWarehouseMapInstance = map;
+      })
+      .catch(() => {
+        container.innerHTML = 'Не удалось найти адрес';
         container.style.display = 'flex';
-        return;
-      }
-      const coords = first.geometry.getCoordinates();
-      const map = new window.ymaps.Map('profile-warehouse-map', {
-        center: coords,
-        zoom: 16,
-        controls: ['zoomControl', 'typeSelector'],
       });
-      const placemark = new window.ymaps.Placemark(coords, {
-        iconCaption: address.length > 40 ? address.slice(0, 40) + '…' : address,
-      });
-      map.geoObjects.add(placemark);
-      profileWarehouseMapInstance = map;
-    })
-    .catch(() => {
-      container.innerHTML = 'Не удалось найти адрес';
-      container.style.display = 'flex';
-    });
+  });
 }
 
 function initAddressSuggests() {
@@ -825,20 +918,105 @@ export function loadProfileOrdersDriversMap() {
     });
 }
 
+let _mapTab = 'orders';
+let _mapData = { orders: [], drivers: [] };
+
+function renderMapList() {
+  const card = document.getElementById('map-list-card');
+  if (!card) return;
+  const statusLabels = { NEW: 'Новая', PUBLISHED: 'Ожидает', TAKEN: 'Взята', IN_PROGRESS: 'В процессе', COMPLETED: 'Завершена', DELIVERED: 'Доставлено', CANCELLED: 'Отменена' };
+  if (_mapTab === 'drivers') {
+    const drivers = _mapData.drivers || [];
+    if (!drivers.length) {
+      card.innerHTML = '<p class="card-title text-muted">Нет водителей на карте</p>';
+      return;
+    }
+    let html = '';
+    drivers.forEach((d) => {
+      const name = [d.user?.firstName, d.user?.lastName].filter(Boolean).join(' ') || 'Водитель';
+      html += `<div class="order-item" data-go="driver-card" data-driver-id="${d.id}" style="cursor:pointer">
+        <div class="route">${escapeHtml(name)}</div>
+        <div class="meta">${escapeHtml(d.driverStatus || '—')} · ${d.latitude && d.longitude ? 'На карте' : ''}</div>
+      </div>`;
+    });
+    card.innerHTML = html;
+    card.querySelectorAll('[data-go="driver-card"][data-driver-id]').forEach((el) => {
+      el.addEventListener('click', () => {
+        window._currentDriverId = el.dataset.driverId;
+        showScreen('driver-card');
+      });
+    });
+  } else {
+    const orders = _mapData.orders || [];
+    if (!orders.length) {
+      card.innerHTML = '<p class="card-title text-muted">Нет заявок на карте</p>';
+      return;
+    }
+    let html = '';
+    orders.forEach((o) => {
+      const price = o.price != null ? (typeof o.price === 'object' ? Number(o.price) : o.price) + ' ₽' : '';
+      html += `<div class="order-item" data-go="order-detail" data-order-id="${o.id}" style="cursor:pointer">
+        <div class="route">${o.orderNumber || o.id} · ${escapeHtml(o.toAddress || '')}</div>
+        <div class="meta">${statusLabels[o.status] || o.status} ${price ? '· ' + price : ''}</div>
+      </div>`;
+    });
+    card.innerHTML = html;
+    card.querySelectorAll('[data-go="order-detail"][data-order-id]').forEach((el) => {
+      el.addEventListener('click', () => {
+        window._currentOrderId = el.dataset.orderId;
+        loadOrderDetail(el.dataset.orderId);
+        showScreen('order-detail');
+      });
+    });
+  }
+}
+
+export function loadEarnings() {
+  const listEl = document.getElementById('earnings-list');
+  const totalEl = document.getElementById('earnings-total');
+  if (!listEl) return;
+  const today = new Date();
+  const from = today.toISOString().slice(0, 10) + 'T00:00:00.000Z';
+  const to = today.toISOString().slice(0, 10) + 'T23:59:59.999Z';
+  listEl.innerHTML = '<p class="card-title text-muted">Загрузка…</p>';
+  api('drivers/me/earnings?from=' + encodeURIComponent(from) + '&to=' + encodeURIComponent(to))
+    .then((data) => {
+      const orders = data.orders || [];
+      if (!orders.length) {
+        listEl.innerHTML = '<p class="card-title text-muted">Нет выполненных заказов за сегодня</p>';
+      } else {
+        let html = '';
+        orders.forEach((o) => {
+          html += `<div class="order-item">
+            <div class="route">${o.orderNumber || o.id}</div>
+            <div class="meta">${o.agreedPrice} ₽ · ${o.completedAt ? new Date(o.completedAt).toLocaleString('ru') : ''}</div>
+          </div>`;
+        });
+        listEl.innerHTML = html;
+      }
+      if (totalEl) totalEl.textContent = (data.totalAmount || 0) + ' ₽';
+    })
+    .catch((e) => {
+      listEl.innerHTML = '<p class="card-title text-muted">' + (e?.message || 'Ошибка загрузки') + '</p>';
+      if (totalEl) totalEl.textContent = '0 ₽';
+    });
+}
+
 export function loadMapData() {
   Promise.all([api('config').catch(() => ({})), api('map').catch(() => ({ orders: [], drivers: [] }))])
     .then(([config, data]) => {
-      const card = document.querySelector('#screen-map .card.mt-16');
-      if (card) {
-        let html = '';
-        (data.orders || []).forEach((o) => {
-          html += `<div class="order-item"><div class="route">${o.orderNumber || o.id} · ${o.toAddress || ''}</div><div class="meta">${o.status || ''}</div></div>`;
-        });
-        card.innerHTML = html || '<p class="card-title">Нет данных для карты</p>';
-      }
+      _mapData = data;
       const container = document.getElementById('yandex-map-container');
       const apiKey = config.yandexMapsApiKey || window.APP_YANDEX_MAPS_API_KEY || '';
       if (!container) return;
+      renderMapList();
+      document.querySelectorAll('#map-tabs [data-map-tab]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          _mapTab = btn.dataset.mapTab || 'orders';
+          document.querySelectorAll('#map-tabs [data-map-tab]').forEach((b) => b.classList.toggle('active', b.dataset.mapTab === _mapTab));
+          renderMapList();
+        });
+      });
       if (!apiKey) {
         container.innerHTML = '<div class="map-placeholder" style="height:100%;display:flex;align-items:center;justify-content:center;color:var(--text-muted);font-size:14px;">Укажите YANDEX_MAPS_API_KEY в настройках сервера</div>';
         return;
@@ -911,6 +1089,36 @@ function bindOrderForm() {
   });
 }
 
+/** Поделиться номером телефона в Mini App без перехода в чат (requestContact) или через чат бота. */
+function shareTelegramPhoneInApp(onSuccess) {
+  const tg = typeof Telegram !== 'undefined' ? Telegram?.WebApp : null;
+  if (tg?.requestContact) {
+    const handler = (event) => {
+      tg.offEvent?.('contactRequested', handler);
+      const contact = event?.contact || event;
+      const phone = contact?.phone_number || contact?.phoneNumber || contact?.contact?.phone_number || contact?.contact?.phoneNumber;
+      if (!phone) return;
+      api('auth/set-phone-from-miniapp', { method: 'POST', json: { phone } })
+        .then(() => {
+          showToast('Номер сохранён в профиль', 'success');
+          if (typeof onSuccess === 'function') onSuccess();
+        })
+        .catch((e) => showToast(e?.message || 'Ошибка сохранения', 'error'));
+    };
+    tg.onEvent?.('contactRequested', handler);
+    tg.requestContact();
+  } else {
+    api('auth/request-telegram-phone', { method: 'POST' })
+      .then(() => {
+        alert('Перейдите в чат с ботом, нажмите «Отправить номер телефона». После отправки вернитесь сюда — номер подставится в профиль.');
+        const botName = window.APP_TELEGRAM_BOT_USERNAME || 'drivergo_bot';
+        const webApp = typeof Telegram !== 'undefined' ? Telegram?.WebApp : null;
+        if (webApp?.openTelegramLink) webApp.openTelegramLink('https://t.me/' + botName);
+      })
+      .catch((e) => alert(e?.message || 'Ошибка'));
+  }
+}
+
 function bindProfiles() {
   document.getElementById('profile-client-save')?.addEventListener('click', () => {
     const warehouseName = getVal('profile-warehouse-name');
@@ -927,6 +1135,7 @@ function bindProfiles() {
         contactName: getVal('profile-client-contact-name') || undefined,
         contactPhone: getVal('profile-client-contact-phone') || undefined,
         contactEmail: getVal('profile-client-contact-email') || undefined,
+        preferredPaymentType: document.getElementById('profile-client-payment-type')?.value || undefined,
       },
     });
     const saveWarehouse = () => {
@@ -954,15 +1163,7 @@ function bindProfiles() {
       .catch((e) => alert(e?.message || 'Ошибка'));
   });
   document.getElementById('profile-client-get-telegram-phone')?.addEventListener('click', () => {
-    api('auth/request-telegram-phone', { method: 'POST' })
-      .then((res) => {
-        alert('Перейдите в чат с ботом, нажмите «Отправить номер телефона». После отправки вернитесь сюда — номер подставится в профиль.');
-        const botName = window.APP_TELEGRAM_BOT_USERNAME || 'drivergo_bot';
-        if (typeof Telegram !== 'undefined' && Telegram?.WebApp?.openTelegramLink) {
-          Telegram.WebApp.openTelegramLink('https://t.me/' + botName);
-        }
-      })
-      .catch((e) => alert(e?.message || 'Ошибка'));
+    shareTelegramPhoneInApp(() => loadClientProfile());
   });
   // При возврате в приложение (например из чата бота) обновляем профиль — номер из Telegram подставится в поле «Телефон»
   document.addEventListener('visibilitychange', () => {
@@ -972,15 +1173,7 @@ function bindProfiles() {
     if (active && active.id === 'screen-profile-driver') loadDriverProfile();
   });
   document.getElementById('profile-driver-get-telegram-phone')?.addEventListener('click', () => {
-    api('auth/request-telegram-phone', { method: 'POST' })
-      .then((res) => {
-        alert('Перейдите в чат с ботом, нажмите «Отправить номер телефона». После отправки вернитесь сюда — номер подставится в профиль.');
-        const botName = window.APP_TELEGRAM_BOT_USERNAME || 'drivergo_bot';
-        if (typeof Telegram !== 'undefined' && Telegram?.WebApp?.openTelegramLink) {
-          Telegram.WebApp.openTelegramLink('https://t.me/' + botName);
-        }
-      })
-      .catch((e) => alert(e?.message || 'Ошибка'));
+    shareTelegramPhoneInApp(() => loadDriverProfile());
   });
   document.getElementById('profile-driver-save')?.addEventListener('click', () => {
     api('drivers/profile', {

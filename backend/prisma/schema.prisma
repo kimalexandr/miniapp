@@ -60,19 +60,20 @@ model User {
 }
 
 model Client {
-  id              String   @id @default(uuid())
-  userId          String   @unique @map("user_id")
-  companyName     String?  @map("company_name")
-  companyType     String?  @map("company_type")   // ИП, ООО, Физ. лицо, Самозанятый
-  inn             String?  @map("inn")
-  kpp             String?  @map("kpp")
-  legalAddress    String?  @map("legal_address")
-  email           String?  @map("email")          // для актов и закрывающих документов
-  contactName     String?  @map("contact_name")
-  contactPhone    String?  @map("contact_phone")
-  contactEmail    String?  @map("contact_email")
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
+  id                  String   @id @default(uuid())
+  userId              String   @unique @map("user_id")
+  companyName         String?  @map("company_name")
+  companyType         String?  @map("company_type")   // ИП, ООО, Физ. лицо, Самозанятый
+  inn                 String?  @map("inn")
+  kpp                 String?  @map("kpp")
+  legalAddress        String?  @map("legal_address")
+  email               String?  @map("email")          // для актов и закрывающих документов
+  contactName         String?  @map("contact_name")
+  contactPhone        String?  @map("contact_phone")
+  contactEmail        String?  @map("contact_email")
+  preferredPaymentType String? @map("preferred_payment_type")  // Наличные, Безнал, С НДС
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
 
   user            User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   warehouses      Warehouse[]

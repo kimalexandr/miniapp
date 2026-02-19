@@ -1,5 +1,8 @@
-import { Controller, Post, Get, Body, Param, UseGuards, Request, BadRequestException } from '@nestjs/common';
+import { Controller, Post, Get, Body, Param, UseGuards, Request } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { RolesGuard } from '../auth/roles.guard';
+import { Roles } from '../auth/roles.decorator';
+import { UserRole } from '@prisma/client';
 import { RatingsService } from './ratings.service';
 import { CreateRatingDto } from './dto/create-rating.dto';
 
@@ -24,6 +27,16 @@ export class RatingsController {
   @Get('client/:clientId')
   async getClientRatings(@Param('clientId') clientId: string) {
     return this.ratings.getClientRatings(clientId);
+  }
+
+  /**
+   * Мои отзывы (для водителя — отзывы от складов/клиентов)
+   */
+  @Get('driver/me')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.DRIVER)
+  async getMyDriverRatings(@Request() req: RequestWithUser) {
+    return this.ratings.getMyDriverRatings(req.user.userId);
   }
 
   /**

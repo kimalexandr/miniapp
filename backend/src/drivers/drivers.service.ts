@@ -47,7 +47,12 @@ export class DriversService {
   }
 
   async getProfile(userId: string) {
-    return this.getOrCreateDriver(userId);
+    const driver = await this.getOrCreateDriver(userId);
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { phone: true },
+    });
+    return { ...driver, phone: user?.phone ?? null };
   }
 
   async getDriverById(driverId: string) {

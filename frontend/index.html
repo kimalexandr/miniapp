@@ -329,7 +329,7 @@
     </div>
     <div class="card">
       <label>Форма оплаты</label>
-      <select><option>Наличные</option><option>Безнал</option><option>С НДС</option></select>
+      <select id="profile-client-payment-type"><option value="Наличные">Наличные</option><option value="Безнал">Безнал</option><option value="С НДС">С НДС</option></select>
     </div>
 
     <div class="card">
@@ -407,7 +407,9 @@
     <div class="card">
       <div class="profile-block">
         <div class="block-title">Рейтинг клиента (от водителей)</div>
-        <p class="card-title text-muted" style="margin-top: 16px;">Рейтинги появятся после выполненных заказов</p>
+        <div id="client-view-rating" class="profile-block mt-8">
+          <p class="card-title text-muted">Загрузка…</p>
+        </div>
       </div>
     </div>
 
@@ -439,8 +441,22 @@
     </div>
     <div class="card">
       <div class="card-title">Телефон из Telegram</div>
+      <div id="profile-driver-phone-display" class="profile-row mb-8" style="display:none;">
+        <span class="key">Номер</span>
+        <span class="val" id="profile-driver-phone-value">—</span>
+      </div>
       <p class="card-title text-muted mb-8">Приложение может подставить ваш номер из Telegram в профиль.</p>
       <button type="button" class="btn btn-primary" id="profile-driver-get-telegram-phone">Узнать мой номер из Telegram</button>
+    </div>
+    <div class="card" id="profile-driver-rating-card">
+      <div class="profile-block">
+        <div class="block-title">Мой рейтинг (от складов)</div>
+        <p class="card-title text-muted" style="margin-top: 16px;">Рейтинги появятся после выполненных заказов</p>
+      </div>
+      <div id="profile-driver-reviews-list" class="mt-16" style="display:none;">
+        <div class="block-title">Отзывы от складов</div>
+        <div id="profile-driver-reviews-container"></div>
+      </div>
     </div>
     <button type="button" class="btn btn-primary mt-16" id="profile-driver-save">Сохранить</button>
     <button type="button" class="btn btn-primary mt-16" id="profile-driver-location">Обновить геолокацию</button>
@@ -459,24 +475,33 @@
     <button type="button" class="btn btn-ghost mt-16" data-go="orders">← К заявкам</button>
   </section>
 
+  <!-- Водитель: заработок за сегодня -->
+  <section id="screen-earnings" class="screen">
+    <div class="page-header">Заработок</div>
+    <p class="card-title mb-8">Выполненные заказы за сегодня</p>
+    <div class="card" id="earnings-list">
+      <p class="card-title text-muted">Загрузка…</p>
+    </div>
+    <div class="card mt-16">
+      <div class="profile-row">
+        <span class="key">Итого за сегодня</span>
+        <span class="val" id="earnings-total">0 ₽</span>
+      </div>
+    </div>
+    <button class="btn btn-ghost mt-16" data-go="home">← На главную</button>
+  </section>
+
   <!-- Карта заявок и водителей -->
   <section id="screen-map" class="screen">
     <div class="page-header">Заявки на карте</div>
     <p class="card-title mb-8">Точки — заявки (погрузка), маркеры — водители (свободны/догруз)</p>
     <div id="yandex-map-container" style="height:280px; width:100%; border-radius: var(--radius);"></div>
-    <div class="tabs-inline mt-16">
-      <button type="button" class="active">Заявки</button>
-      <button type="button">Водители</button>
+    <div class="tabs-inline mt-16" id="map-tabs">
+      <button type="button" class="active" data-map-tab="orders">Заявки</button>
+      <button type="button" data-map-tab="drivers">Водители</button>
     </div>
-    <div class="card mt-16">
-      <div class="order-item">
-        <div class="route">WB → Коледино, 4 п · 2000 ₽</div>
-        <div class="meta">Варшавское шоссе 132с9 · погрузка 07.02</div>
-      </div>
-      <div class="order-item">
-        <div class="route">Озон → Подольск, 2 п · 2500 ₽</div>
-        <div class="meta">Котовск · погрузка 08.02</div>
-      </div>
+    <div class="card mt-16" id="map-list-card">
+      <p class="card-title text-muted">Загрузка…</p>
     </div>
     <button class="btn btn-ghost mt-16" data-go="home">← На главную</button>
   </section>
@@ -557,7 +582,7 @@
     <button type="button" data-tab="orders">Заявки</button>
     <button type="button" data-tab="order-detail" style="display:none">Детали</button>
     <button type="button" data-tab="driver-status" data-role-required="DRIVER">Статус</button>
-    <button type="button" data-tab="driver-card" data-role-required="DRIVER">Водитель</button>
+    <button type="button" data-tab="earnings" data-role-required="DRIVER">Заработок</button>
     <button type="button" data-tab="profile-client" data-role-required="CLIENT">Профиль</button>
     <button type="button" data-tab="profile-driver" data-role-required="DRIVER">Профиль</button>
   </nav>
