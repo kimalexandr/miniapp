@@ -461,7 +461,7 @@ export function loadClientProfile() {
       set('profile-client-legal', p.legalAddress);
       set('profile-client-email', p.email);
       set('profile-client-contact-name', p.contactName);
-      set('profile-client-contact-phone', p.contactPhone);
+      set('profile-client-contact-phone', p.contactPhone || p.phone || '');
       set('profile-client-contact-email', p.contactEmail);
       const paymentSelect = document.getElementById('profile-client-payment-type');
       if (paymentSelect) paymentSelect.value = p.preferredPaymentType || 'Наличные';
@@ -493,16 +493,8 @@ export function loadDriverProfile() {
       set('profile-driver-license', p.licenseNumber);
       set('profile-driver-status', p.driverStatus || '');
 
-      const phoneDisplay = document.getElementById('profile-driver-phone-display');
       const phoneVal = document.getElementById('profile-driver-phone-value');
-      if (phoneDisplay && phoneVal) {
-        if (p.phone) {
-          phoneVal.textContent = p.phone;
-          phoneDisplay.style.display = 'flex';
-        } else {
-          phoneDisplay.style.display = 'none';
-        }
-      }
+      if (phoneVal) phoneVal.textContent = p.phone || '—';
     })
     .catch(() => {});
   

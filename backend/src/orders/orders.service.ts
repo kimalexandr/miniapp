@@ -130,7 +130,7 @@ export class OrdersService {
     if (!driver) return [];
     const where: Record<string, unknown> = {
       driverId: null,
-      status: OrderStatus.PUBLISHED,
+      status: { in: [OrderStatus.NEW, OrderStatus.PUBLISHED] },
     };
     if (filters?.preferredDateFrom || filters?.preferredDateTo) {
       where.preferredDate = {};
@@ -181,7 +181,7 @@ export class OrdersService {
     const order = await this.prisma.order.findUnique({ where: { id: orderId } });
     if (!order) throw new NotFoundException('Заявка не найдена');
     if (order.driverId) throw new ForbiddenException('Заявка уже взята');
-    if (order.status !== OrderStatus.PUBLISHED) {
+    if (order.status !== OrderStatus.PUBLISHED && order.status !== OrderStatus.NEW) {
       throw new ForbiddenException('Заявка недоступна для взятия');
     }
 

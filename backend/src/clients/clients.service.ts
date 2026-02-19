@@ -36,6 +36,15 @@ export class ClientsService {
   }
 
   async getProfile(userId: string) {
-    return this.getOrCreateClient(userId);
+    const client = await this.getOrCreateClient(userId);
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { phone: true },
+    });
+    return {
+      ...client,
+      phone: user?.phone ?? null,
+      contactPhone: client.contactPhone ?? user?.phone ?? null,
+    };
   }
 }
