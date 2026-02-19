@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/commo
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { CreateOrderDto } from './dto/create-order.dto';
+import { UpdateOrderDto } from './dto/update-order.dto';
 import { OrderStatus } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 
@@ -186,5 +187,71 @@ export class OrdersService {
     ]);
     await this.audit.log(driverUserId, 'status_changed', 'Order', orderId, { status });
     return this.findById(orderId, driverUserId);
+  }
+
+  async updateOrder(orderId: string, clientUserId: string, dto: UpdateOrderDto) {
+    const client = await this.prisma.client.findUnique({ where: { userId: clientUserId } });
+    if (!client) throw new ForbiddenException('Профиль клиента не найден');
+
+    const order = await this.prisma.order.findUnique({ where: { id: orderId } });
+    if (!order) throw new NotFoundException('Заявка не найдена');
+    if (order.clientId !== client.id) throw new ForbiddenException('Это не ваша заявка');
+
+    const allowedStatuses: OrderStatus[] = [OrderStatus.NEW, OrderStatus.DRAFT, OrderStatus.PUBLISHED];
+    if (!allowedStatuses.includes(order.status)) {
+      throw new ForbiddenException('Редактирование недоступно для заявки в текущем статусе');
+    }
+
+    const data: Record<string, unknown> = {};
+    if (dto.fromWarehouseId !== undefined) data.fromWarehouseId = dto.fromWarehouseId || null;
+    if (dto.toAddress !== undefined) data.toAddress = dto.toAddress;
+    if (dto.toLatitude !== undefined) data.toLatitude = dto.toLatitude ?? null;
+    if (dto.toLongitude !== undefined) data.toLongitude = dto.toLongitude ?? null;
+    if (dto.preferredDate !== undefined) data.preferredDate = new Date(dto.preferredDate);
+    if (dto.preferredTimeFrom !== undefined) data.preferredTimeFrom = dto.preferredTimeFrom ?? null;
+    if (dto.preferredTimeTo !== undefined) data.preferredTimeTo = dto.preferredTimeTo ?? null;
+    if (dto.cargoType !== undefined) data.cargoType = dto.cargoType ?? null;
+    if (dto.cargoVolume !== undefined) data.cargoVolume = dto.cargoVolume ?? null;
+    if (dto.cargoWeight !== undefined) data.cargoWeight = dto.cargoWeight ?? null;
+    if (dto.cargoPlaces !== undefined) data.cargoPlaces = dto.cargoPlaces ?? null;
+    if (dto.pickupRequired !== undefined) data.pickupRequired = dto.pickupRequired ?? false;
+    if (dto.specialConditions !== undefined) data.specialConditions = dto.specialConditions ?? null;
+    if (dto.contactName !== undefined) data.contactName = dto.contactName ?? null;
+    if (dto.contactPhone !== undefined) data.contactPhone = dto.contactPhone ?? null;
+    if (dto.responseDeadline !== undefined) data.responseDeadline = dto.responseDeadline ? new Date(dto.responseDeadline) : null;
+    if (dto.price !== undefined) data.price = dto.price != null ? new Decimal(dto.price) : null;
+    if (dto.paymentType !== undefined) data.paymentType = dto.paymentType ?? null;
+
+    await this.prisma.order.update({
+      where: { id: orderId },
+      data,
+    });
+    await this.audit.log(clientUserId, 'order_updated', 'Order', orderId, {});
+    return this.findById(orderId, clientUserId);
+  }
+
+  async unpublishOrder(orderId: string, clientUserId: string) {
+    const client = await this.prisma.client.findUnique({ where: { userId: clientUserId } });
+    if (!client) throw new ForbiddenException('Профиль клиента не найден');
+
+    const order = await this.prisma.order.findUnique({ where: { id: orderId } });
+    if (!order) throw new NotFoundException('Заявка не найдена');
+    if (order.clientId !== client.id) throw new ForbiddenException('Это не ваша заявка');
+    if (order.status !== OrderStatus.PUBLISHED) {
+      throw new ForbiddenException('Снять с публикации можно только заявку в статусе «Ожидает откликов»');
+    }
+    if (order.driverId) throw new ForbiddenException('По заявке уже есть отклики');
+
+    await this.prisma.$transaction([
+      this.prisma.order.update({
+        where: { id: orderId },
+        data: { status: OrderStatus.DRAFT },
+      }),
+      this.prisma.orderStatusHistory.create({
+        data: { orderId, status: OrderStatus.DRAFT, comment: 'Снято с публикации клиентом' },
+      }),
+    ]);
+    await this.audit.log(clientUserId, 'order_unpublished', 'Order', orderId, {});
+    return this.findById(orderId, clientUserId);
   }
 }

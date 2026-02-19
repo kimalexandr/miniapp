@@ -4,9 +4,10 @@ import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
+import { JwtAuthGuard } from './jwt-auth.guard';
 import { JwtStrategy } from './jwt.strategy';
 import { RolesGuard } from './roles.guard';
-import { TelegramService } from './telegram.service';
+import { TelegramService, TelegramBotService } from './telegram.service';
 import { UsersModule } from '../users/users.module';
 
 @Module({
@@ -22,8 +23,8 @@ import { UsersModule } from '../users/users.module';
       inject: [ConfigService],
     }),
   ],
-  providers: [AuthService, TelegramService, JwtStrategy, RolesGuard],
+  providers: [AuthService, TelegramService, TelegramBotService, JwtStrategy, JwtAuthGuard, RolesGuard],
   controllers: [AuthController],
-  exports: [AuthService, JwtModule, RolesGuard],
+  exports: [AuthService, JwtModule, JwtAuthGuard, RolesGuard],
 })
 export class AuthModule {}

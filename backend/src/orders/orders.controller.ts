@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Put,
   Body,
   Param,
   Query,
@@ -10,6 +11,7 @@ import {
 import { OrderStatus } from '@prisma/client';
 import { OrdersService } from './orders.service';
 import { CreateOrderDto } from './dto/create-order.dto';
+import { UpdateOrderDto } from './dto/update-order.dto';
 import { UpdateOrderStatusDto } from './dto/update-status.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
@@ -72,6 +74,24 @@ export class OrdersController {
   @Roles(UserRole.DRIVER)
   async take(@CurrentUser() payload: JwtPayload, @Param('id') id: string) {
     return this.orders.takeOrder(id, payload.userId);
+  }
+
+  @Put(':id')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.CLIENT)
+  async update(
+    @CurrentUser() payload: JwtPayload,
+    @Param('id') id: string,
+    @Body() dto: UpdateOrderDto,
+  ) {
+    return this.orders.updateOrder(id, payload.userId, dto);
+  }
+
+  @Post(':id/unpublish')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.CLIENT)
+  async unpublish(@CurrentUser() payload: JwtPayload, @Param('id') id: string) {
+    return this.orders.unpublishOrder(id, payload.userId);
   }
 
   @Post(':id/status')

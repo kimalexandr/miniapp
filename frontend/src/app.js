@@ -35,6 +35,7 @@ export function showScreen(screenId) {
   if (screenId === 'driver-status') loadDriverStatus();
   if (screenId === 'driver-card' && window._currentDriverId) loadDriverCard(window._currentDriverId);
   if (screenId === 'order-detail' && window._currentOrderId) loadOrderDetail(window._currentOrderId);
+  if (screenId === 'profile-client-view') loadProfileClientView();
 }
 
 export function loadOrderWarehouses() {
@@ -65,13 +66,21 @@ export function loadOrdersList() {
       const statusClass = { NEW: 'published', DRAFT: 'draft', PUBLISHED: 'published', TAKEN: 'taken', IN_TRANSIT: 'in_progress', LOADING_DONE: 'in_progress', AT_WAREHOUSE: 'in_progress', DELIVERED: 'in_progress', COMPLETED: 'completed', CANCELLED: 'cancelled' };
       let html = '';
       (orders || []).forEach((o) => {
-        const fromAddr = o.fromWarehouse?.address || '';
-        const route = (fromAddr ? fromAddr + ' → ' : '') + (o.toAddress || '');
-        const price = o.price != null ? (typeof o.price === 'object' ? o.price.toString() : o.price) + ' ₽' : '';
+        const fromAddr = o.fromWarehouse?.address || o.fromWarehouse?.name || '—';
+        const toAddr = o.toAddress || '—';
+        const dateStr = o.preferredDate ? new Date(o.preferredDate).toLocaleDateString('ru') : '—';
+        const timeStr = [o.preferredTimeFrom, o.preferredTimeTo].filter(Boolean).join('–') || '';
+        const dateTimeStr = timeStr ? dateStr + ', ' + timeStr : dateStr;
+        const cargoStr = [o.cargoPlaces && o.cargoPlaces + ' мест', o.cargoType, o.cargoWeight && 'до ' + o.cargoWeight + ' кг'].filter(Boolean).join(', ') || '—';
+        const priceStr = o.price != null ? (typeof o.price === 'object' ? o.price.toString() : o.price) + ' ₽' : '—';
         const driverName = o.driver?.user ? (o.driver.user.firstName || '') + ' ' + (o.driver.user.lastName || '') : '';
         html += `<div class="order-item" data-status="${statusClass[o.status] || ''}" data-order-id="${o.id}">`;
-        html += `<div class="head"><span class="route">${o.orderNumber || o.id} · ${route}</span><span class="status-badge ${statusClass[o.status] || ''}">${statusLabels[o.status] || o.status}</span></div>`;
-        html += `<div class="meta">${o.preferredDate ? new Date(o.preferredDate).toLocaleDateString('ru') : ''}${fromAddr ? ' · ' + fromAddr : ''}${price ? ' · ' + price : ''}</div>`;
+        html += `<div class="head"><span class="route">${o.orderNumber || o.id}</span><span class="status-badge ${statusClass[o.status] || ''}">${statusLabels[o.status] || o.status}</span></div>`;
+        html += `<div class="meta"><span class="text-muted">Откуда:</span> ${fromAddr}</div>`;
+        html += `<div class="meta"><span class="text-muted">Куда:</span> ${toAddr}</div>`;
+        html += `<div class="meta"><span class="text-muted">Дата и время:</span> ${dateTimeStr}</div>`;
+        html += `<div class="meta"><span class="text-muted">Груз:</span> ${cargoStr}</div>`;
+        html += `<div class="meta"><span class="text-muted">Стоимость:</span> ${priceStr}</div>`;
         if (driverName) html += `<div class="meta">Водитель: ${driverName}</div>`;
         html += '<div class="order-actions">';
         if (u.role === 'DRIVER' && !o.driverId && (o.status === 'NEW' || o.status === 'PUBLISHED')) {
@@ -126,19 +135,88 @@ export function loadOrdersList() {
     });
 }
 
+const ORDER_STATUS_LABELS = {
+  NEW: 'Новая',
+  DRAFT: 'Черновик',
+  PUBLISHED: 'Ожидает откликов',
+  TAKEN: 'Взята',
+  AT_WAREHOUSE: 'На складе',
+  LOADING_DONE: 'Загрузка завершена',
+  IN_TRANSIT: 'В пути',
+  DELIVERED: 'Доставлено',
+  COMPLETED: 'Завершена',
+  CANCELLED: 'Отменена',
+};
+
 export function loadOrderDetail(id) {
   api('orders/' + id).then((o) => {
-    const fromAddr = o.fromWarehouse?.address || '';
+    const fromAddr = o.fromWarehouse?.address || '—';
     const titleEl = document.getElementById('order-detail-title');
     const contentEl = document.getElementById('order-detail-content');
     const actionsEl = document.getElementById('order-detail-actions');
     if (titleEl) titleEl.textContent = (o.orderNumber || o.id) + ' · ' + (o.toAddress || '');
+
+    const priceStr = o.price != null ? (typeof o.price === 'object' ? o.price.toString() : o.price) + ' ₽' : '—';
+    const dateStr = o.preferredDate ? new Date(o.preferredDate).toLocaleString('ru') : '—';
+    const timeRange = [o.preferredTimeFrom, o.preferredTimeTo].filter(Boolean).join(' – ') || '—';
+
     if (contentEl) {
-      const priceStr = o.price != null ? (typeof o.price === 'object' ? o.price.toString() : o.price) + ' ₽' : '—';
-      contentEl.innerHTML = `<div class="section-title">Маршрут и груз</div><div>${o.cargoPlaces || ''} мест, ${o.cargoType || ''}${o.cargoWeight ? ', до ' + o.cargoWeight + ' кг' : ''}</div><div class="deadline mt-16">${o.preferredDate ? new Date(o.preferredDate).toLocaleString('ru') : ''}${fromAddr ? ' · ' + fromAddr : ''}</div><div class="section-title mt-16">Цена</div><div>${priceStr}</div>`;
+      contentEl.innerHTML = `
+        <div class="section-title">Статус</div>
+        <div class="mb-16">${ORDER_STATUS_LABELS[o.status] || o.status}</div>
+        <div class="section-title">Откуда</div>
+        <div class="mb-16">${fromAddr}</div>
+        <div class="section-title">Адрес назначения</div>
+        <div class="mb-16">${o.toAddress || '—'}</div>
+        <div class="section-title">Груз</div>
+        <div class="mb-16">${o.cargoPlaces ? o.cargoPlaces + ' мест' : '—'}, ${o.cargoType || '—'}${o.cargoWeight ? ', до ' + o.cargoWeight + ' кг' : ''}</div>
+        <div class="section-title">Дата и время подачи</div>
+        <div class="mb-16">${dateStr}${timeRange !== '—' ? ', ' + timeRange : ''}</div>
+        <div class="section-title">Забор со склада</div>
+        <div class="mb-16">${o.pickupRequired ? 'Да' : 'Нет'}</div>
+        ${o.specialConditions ? `<div class="section-title">Особые условия</div><div class="mb-16">${o.specialConditions}</div>` : ''}
+        <div class="section-title">Контакт</div>
+        <div class="mb-16">${o.contactName || '—'}, ${o.contactPhone || '—'}</div>
+        <div class="section-title">Цена</div>
+        <div class="mb-16">${priceStr}</div>
+        <div class="section-title">Оплата</div>
+        <div>${o.paymentType || '—'}</div>
+      `;
     }
+
     if (actionsEl) {
       actionsEl.innerHTML = '';
+      const isClient = window.AppUser?.role === 'CLIENT';
+      const canEditOrUnpublish = isClient && (o.status === 'NEW' || o.status === 'PUBLISHED') && !o.driverId;
+
+      if (canEditOrUnpublish) {
+        const editBtn = document.createElement('button');
+        editBtn.className = 'btn btn-primary btn-small mr-8';
+        editBtn.textContent = 'Редактировать';
+        editBtn.onclick = () => {
+          window._currentOrderId = o.id;
+          loadOrderForEdit(o);
+          showScreen('order');
+        };
+        actionsEl.appendChild(editBtn);
+        if (o.status === 'PUBLISHED') {
+          const unpublishBtn = document.createElement('button');
+          unpublishBtn.className = 'btn btn-ghost btn-small';
+          unpublishBtn.textContent = 'Снять с публикации';
+          unpublishBtn.onclick = () => {
+            if (!confirm('Снять заявку с публикации? Водители больше не увидят её.')) return;
+            api('orders/' + o.id + '/unpublish', { method: 'POST' })
+              .then(() => {
+                loadOrderDetail(o.id);
+                showScreen('orders');
+                loadOrdersList();
+              })
+              .catch((e) => alert(e?.message || 'Ошибка'));
+          };
+          actionsEl.appendChild(unpublishBtn);
+        }
+      }
+
       if (window.AppUser?.role === 'DRIVER' && o.driverId && ['TAKEN', 'AT_WAREHOUSE', 'LOADING_DONE', 'IN_TRANSIT'].includes(o.status)) {
         const statusBtn = document.createElement('button');
         statusBtn.className = 'btn btn-primary btn-small';
@@ -151,6 +229,57 @@ export function loadOrderDetail(id) {
       }
     }
   });
+}
+
+function loadOrderForEdit(o) {
+  const set = (id, v) => {
+    const el = document.getElementById(id);
+    if (el) el.value = v != null ? v : '';
+  };
+  set('order-from-warehouse', o.fromWarehouseId);
+  set('order-from-address', o.fromWarehouse?.address || '');
+  set('order-to-address', o.toAddress);
+  set('order-preferred-date', o.preferredDate ? new Date(o.preferredDate).toISOString().slice(0, 10) : '');
+  set('order-time-from', o.preferredTimeFrom || '');
+  set('order-time-to', o.preferredTimeTo || '');
+  set('order-cargo-places', o.cargoPlaces);
+  const cargoSelect = document.getElementById('cargo-type-select');
+  if (cargoSelect) cargoSelect.value = o.cargoType || 'pallet';
+  set('order-cargo-weight', o.cargoWeight);
+  set('order-pickup', o.pickupRequired ? '1' : '0');
+  set('order-special', o.specialConditions);
+  set('order-contact-name', o.contactName);
+  set('order-contact-phone', o.contactPhone);
+  set('order-price', o.price != null ? (typeof o.price === 'object' ? o.price.toString() : o.price) : '');
+  const paymentSelect = document.getElementById('order-payment');
+  if (paymentSelect) paymentSelect.value = o.paymentType || 'Наличные';
+}
+
+export function loadProfileClientView() {
+  function setViewVal(id, text) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = text || '—';
+  }
+  function setViewRowVal(rowId, text) {
+    const row = document.getElementById(rowId);
+    const val = row?.querySelector('.val');
+    if (val) val.textContent = text || '—';
+  }
+
+  Promise.all([api('clients/profile').catch(() => ({})), api('warehouses').catch(() => [])])
+    .then(([profile, warehouses]) => {
+      setViewRowVal('client-view-company', profile.companyName);
+      setViewRowVal('client-view-inn', profile.inn);
+      const firstWarehouse = Array.isArray(warehouses) && warehouses[0];
+      setViewRowVal('client-view-address', firstWarehouse?.address);
+      setViewVal('client-view-schedule', firstWarehouse?.workSchedule);
+      setViewVal('client-view-parking', ''); // в API нет поля парковки
+      setViewVal('client-view-phone', profile.contactPhone);
+      const telegram = window.AppUser?.username;
+      setViewVal('client-view-telegram', telegram ? '@' + telegram : '—');
+      setViewVal('client-view-payment', ''); // в API нет поля форма оплаты в профиле
+    })
+    .catch(() => {});
 }
 
 export function loadClientProfile() {
@@ -420,14 +549,29 @@ function bindOrderForm() {
       price: parseFloat(getVal('order-price')) || undefined,
       paymentType: getVal('order-payment') || undefined,
     };
-    api('orders', { method: 'POST', json: payload })
-      .then((order) => {
-        alert('Заявка создана: ' + (order.orderNumber || order.id));
-        showScreen('home');
-      })
-      .catch((e) => alert(e?.message || 'Ошибка создания заявки'));
+    const orderId = window._currentOrderId;
+    if (orderId) {
+      api('orders/' + orderId, { method: 'PUT', json: payload })
+        .then((order) => {
+          alert('Заявка обновлена: ' + (order.orderNumber || order.id));
+          window._currentOrderId = null;
+          showScreen('orders');
+          loadOrdersList();
+        })
+        .catch((e) => alert(e?.message || 'Ошибка обновления заявки'));
+    } else {
+      api('orders', { method: 'POST', json: payload })
+        .then((order) => {
+          alert('Заявка создана: ' + (order.orderNumber || order.id));
+          showScreen('home');
+        })
+        .catch((e) => alert(e?.message || 'Ошибка создания заявки'));
+    }
   });
-  document.getElementById('order-cancel')?.addEventListener('click', () => showScreen('home'));
+  document.getElementById('order-cancel')?.addEventListener('click', () => {
+    window._currentOrderId = null;
+    showScreen('home');
+  });
 }
 
 function bindProfiles() {
@@ -447,6 +591,17 @@ function bindProfiles() {
       },
     })
       .then(() => alert('Сохранено'))
+      .catch((e) => alert(e?.message || 'Ошибка'));
+  });
+  document.getElementById('profile-client-get-telegram-phone')?.addEventListener('click', () => {
+    api('auth/request-telegram-phone', { method: 'POST' })
+      .then((res) => {
+        alert(res.message || 'Перейдите в чат с ботом и нажмите «Отправить номер телефона».');
+        const botName = window.APP_TELEGRAM_BOT_USERNAME || 'drivergo_bot';
+        if (typeof Telegram !== 'undefined' && Telegram?.WebApp?.openTelegramLink) {
+          Telegram.WebApp.openTelegramLink('https://t.me/' + botName);
+        }
+      })
       .catch((e) => alert(e?.message || 'Ошибка'));
   });
   document.getElementById('profile-driver-save')?.addEventListener('click', () => {
@@ -502,7 +657,10 @@ function bindNavigation() {
       if (id === 'screen-profile-client') loadClientProfile();
       if (id === 'screen-profile-driver') loadDriverProfile();
       if (id === 'screen-map') loadMapData();
-      if (id === 'screen-order') loadOrderWarehouses();
+      if (id === 'screen-order') {
+        window._currentOrderId = null;
+        loadOrderWarehouses();
+      }
     });
   });
 

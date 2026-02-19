@@ -305,6 +305,11 @@
       <select><option>Бесплатная</option><option>Платная</option></select>
     </div>
     <div class="card">
+      <div class="card-title">Телефон из Telegram</div>
+      <p class="card-title text-muted mb-8">Приложение может подставить ваш реальный номер, с которым вы зарегистрированы в Telegram, в профиль.</p>
+      <button type="button" class="btn btn-primary" id="profile-client-get-telegram-phone">Узнать мой номер из Telegram</button>
+    </div>
+    <div class="card">
       <div class="card-title">Контакты ответственного за погрузку</div>
       <input type="tel" id="profile-client-contact-phone" placeholder="Телефон 1" class="mb-8" />
       <input type="text" id="profile-client-contact-name" placeholder="Контактное лицо" class="mb-8" />
@@ -370,24 +375,23 @@
     <div class="card">
       <div class="profile-block">
         <div class="block-title">Режим работы и условия</div>
-        <div class="profile-row"><span class="key">Режим работы</span><span class="val">Пн–Пт 9:00–18:00</span></div>
-        <div class="profile-row"><span class="key">Пропуск</span><span class="val">Не нужен</span></div>
-        <div class="profile-row"><span class="key">Парковка</span><span class="val">Бесплатная</span></div>
+        <div class="profile-row"><span class="key">Режим работы</span><span class="val" id="client-view-schedule">—</span></div>
+        <div class="profile-row"><span class="key">Парковка</span><span class="val" id="client-view-parking">—</span></div>
       </div>
     </div>
 
     <div class="card">
       <div class="profile-block">
         <div class="block-title">Контакты ответственного</div>
-        <div class="profile-row"><span class="key">Телефон</span><span class="val">+7 910 671-97-70</span></div>
-        <div class="profile-row"><span class="key">Telegram</span><span class="val">@client_nick</span></div>
+        <div class="profile-row"><span class="key">Телефон</span><span class="val" id="client-view-phone">—</span></div>
+        <div class="profile-row"><span class="key">Telegram</span><span class="val" id="client-view-telegram">—</span></div>
       </div>
     </div>
 
     <div class="card">
       <div class="profile-block">
         <div class="block-title">Оплата</div>
-        <div class="profile-row"><span class="key">Форма оплаты</span><span class="val">Безнал, с НДС</span></div>
+        <div class="profile-row"><span class="key">Форма оплаты</span><span class="val" id="client-view-payment">—</span></div>
       </div>
     </div>
 

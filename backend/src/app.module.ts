@@ -12,6 +12,7 @@ import { WarehousesModule } from './warehouses/warehouses.module';
 import { MapModule } from './map/map.module';
 import { AuditModule } from './audit/audit.module';
 import { RatingsModule } from './ratings/ratings.module';
+import { AdminModule } from './admin/admin.module';
 import { PrismaModule } from './prisma/prisma.module';
 
 @Module({
@@ -36,6 +37,7 @@ import { PrismaModule } from './prisma/prisma.module';
     MapModule,
     AuditModule,
     RatingsModule,
+    AdminModule,
   ],
 })
 export class AppModule {}

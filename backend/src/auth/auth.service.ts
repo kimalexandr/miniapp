@@ -3,7 +3,7 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { UserRole } from '@prisma/client';
 import * as crypto from 'crypto';
-import { TelegramService } from './telegram.service';
+import { TelegramService, TelegramBotService } from './telegram.service';
 import { UsersService } from '../users/users.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RequestPhoneCodeDto, ConfirmPhoneDto } from './dto/phone-verify.dto';
@@ -18,6 +18,7 @@ export class AuthService {
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
     private readonly telegram: TelegramService,
+    private readonly telegramBot: TelegramBotService,
     private readonly users: UsersService,
     private readonly prisma: PrismaService,
   ) {}
@@ -70,15 +71,42 @@ export class AuthService {
   }
 
   /**
+   * Запросить у пользователя отправку номера в боте (отправить клавиатуру с request_contact).
+   */
+  async requestTelegramPhone(userId: string): Promise<{ success: boolean; message: string }> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { telegramId: true },
+    });
+    if (!user?.telegramId) {
+      throw new BadRequestException('Telegram не привязан');
+    }
+    await this.telegramBot.sendContactKeyboard(Number(user.telegramId));
+    return {
+      success: true,
+      message: 'Перейдите в чат с ботом (@drivergo_bot), нажмите «Отправить номер телефона», затем вернитесь сюда и обновите профиль.',
+    };
+  }
+
+  /**
    * Установить телефон пользователя из контакта Telegram (webhook бота).
-   * Номер нормализуется к E.164; пользователь переводится в PENDING_ROLE.
+   * Номер нормализуется к E.164; также обновляется contactPhone в профиле клиента при наличии.
    */
   async setPhoneFromTelegram(telegramId: number, rawPhone: string): Promise<boolean> {
-    const user = await this.users.findByTelegramId(telegramId);
+    const user = await this.prisma.user.findUnique({
+      where: { telegramId: BigInt(telegramId) },
+      include: { client: true },
+    });
     if (!user) return false;
     const phone = this.normalizePhoneE164(rawPhone);
     if (!phone) return false;
     await this.users.setPhone(user.id, phone);
+    if (user.client) {
+      await this.prisma.client.update({
+        where: { id: user.client.id },
+        data: { contactPhone: phone },
+      });
+    }
     return true;
   }
 

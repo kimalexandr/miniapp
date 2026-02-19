@@ -8,6 +8,13 @@ import { JwtAuthGuard } from './jwt-auth.guard';
 import { CurrentUser } from './current-user.decorator';
 import { JwtPayload } from './jwt.strategy';
 
+interface TelegramUpdate {
+  message?: {
+    from?: { id: number };
+    contact?: { phone_number: string };
+  };
+}
+
 @Controller('auth')
 export class AuthController {
   constructor(private readonly auth: AuthService) {}
@@ -35,5 +42,22 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   async chooseRole(@CurrentUser() payload: JwtPayload, @Body() dto: ChooseRoleDto) {
     return this.auth.chooseRole(payload.userId, dto);
+  }
+
+  @Post('request-telegram-phone')
+  @UseGuards(JwtAuthGuard)
+  async requestTelegramPhone(@CurrentUser() payload: JwtPayload) {
+    return this.auth.requestTelegramPhone(payload.userId);
+  }
+
+  /** Webhook для приёма контакта от Telegram Bot (кнопка «Поделиться номером»). */
+  @Post('telegram-webhook')
+  async telegramWebhook(@Body() update: TelegramUpdate) {
+    const contact = update?.message?.contact;
+    const fromId = update?.message?.from?.id;
+    if (contact?.phone_number && fromId) {
+      await this.auth.setPhoneFromTelegram(fromId, contact.phone_number);
+    }
+    return { ok: true };
   }
 }
