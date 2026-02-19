@@ -89,6 +89,9 @@ export class RatingsService {
   }
 
   async getMyStats(userId: string) {
+    if (!userId || userId === 'admin') {
+      throw new BadRequestException('Пользователь не найден');
+    }
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       include: { client: true, driver: true },

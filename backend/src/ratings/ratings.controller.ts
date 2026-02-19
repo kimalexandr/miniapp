@@ -3,7 +3,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RatingsService } from './ratings.service';
 import { CreateRatingDto } from './dto/create-rating.dto';
 
-interface RequestWithUser { user: { sub: string } }
+interface RequestWithUser { user: { userId: string } }
 
 @Controller('ratings')
 @UseGuards(JwtAuthGuard)
@@ -15,7 +15,7 @@ export class RatingsController {
    */
   @Post()
   async createRating(@Request() req: RequestWithUser, @Body() dto: CreateRatingDto) {
-    return this.ratings.createRating(req.user.sub, dto);
+    return this.ratings.createRating(req.user.userId, dto);
   }
 
   /**
@@ -39,6 +39,6 @@ export class RatingsController {
    */
   @Get('my-stats')
   async getMyStats(@Request() req: RequestWithUser) {
-    return this.ratings.getMyStats(req.user.sub);
+    return this.ratings.getMyStats(req.user.userId);
   }
 }
