@@ -129,6 +129,7 @@ export class OrdersService {
       orderBy: { updatedAt: 'desc' },
       include: {
         client: { include: { user: { select: { firstName: true, lastName: true } } } },
+        fromWarehouse: { select: { address: true, name: true } },
         ratings: { select: { raterRole: true } },
       },
     });
@@ -252,6 +253,33 @@ export class OrdersService {
       }),
     ]);
     await this.audit.log(clientUserId, 'order_unpublished', 'Order', orderId, {});
+    return this.findById(orderId, clientUserId);
+  }
+
+  async cancelOrder(orderId: string, clientUserId: string) {
+    const client = await this.prisma.client.findUnique({ where: { userId: clientUserId } });
+    if (!client) throw new ForbiddenException('Профиль клиента не найден');
+
+    const order = await this.prisma.order.findUnique({ where: { id: orderId } });
+    if (!order) throw new NotFoundException('Заявка не найдена');
+    if (order.clientId !== client.id) throw new ForbiddenException('Это не ваша заявка');
+
+    const allowedStatuses: OrderStatus[] = [OrderStatus.NEW, OrderStatus.DRAFT, OrderStatus.PUBLISHED];
+    if (!allowedStatuses.includes(order.status)) {
+      throw new ForbiddenException('Отменить можно только заявку без водителя');
+    }
+    if (order.driverId) throw new ForbiddenException('По заявке уже назначен водитель, отмена недоступна');
+
+    await this.prisma.$transaction([
+      this.prisma.order.update({
+        where: { id: orderId },
+        data: { status: OrderStatus.CANCELLED },
+      }),
+      this.prisma.orderStatusHistory.create({
+        data: { orderId, status: OrderStatus.CANCELLED, comment: 'Отменена клиентом' },
+      }),
+    ]);
+    await this.audit.log(clientUserId, 'order_cancelled', 'Order', orderId, {});
     return this.findById(orderId, clientUserId);
   }
 }

@@ -1,6 +1,12 @@
 import { api } from './api.js';
 import { isFullyLoggedIn } from './auth.js';
-import { createAddressInputWithYandexSuggest } from './address-input-yandex.js';
+
+function escapeHtml(s) {
+  if (s == null || s === '') return '';
+  const div = document.createElement('div');
+  div.textContent = s;
+  return div.innerHTML;
+}
 
 const PROTECTED_SCREENS = [
   'home', 'order', 'orders', 'order-detail', 'map',
@@ -32,7 +38,11 @@ export function showScreen(screenId) {
   if (screenId === 'profile-client') loadClientProfile();
   if (screenId === 'profile-driver') loadDriverProfile();
   if (screenId === 'map') loadMapData();
-  if (screenId === 'order') loadOrderWarehouses();
+  if (screenId === 'order') {
+    loadOrderWarehouses();
+    const cancelOrderBtn = document.getElementById('order-cancel-order');
+    if (cancelOrderBtn) cancelOrderBtn.style.display = window._currentOrderId && window.AppUser?.role === 'CLIENT' ? 'block' : 'none';
+  }
   if (screenId === 'order' || screenId === 'profile-client') initAddressSuggests();
   if (screenId === 'driver-status') loadDriverStatus();
   if (screenId === 'driver-card' && window._currentDriverId) loadDriverCard(window._currentDriverId);
@@ -61,8 +71,25 @@ export function loadOrdersList() {
   if (!u?.role) return;
   const listEl = document.getElementById('orders-list');
   if (!listEl) return;
+  const draftTab = document.getElementById('order-tab-draft');
+  if (draftTab) draftTab.style.display = 'none';
   listEl.innerHTML = '<p class="card-title">Загрузка…</p>';
-  api('orders?role=' + u.role)
+  const ordersPromise =
+    u.role === 'DRIVER'
+      ? Promise.all([api('orders?role=DRIVER').catch(() => []), api('orders/my').catch(() => [])]).then(
+          ([available, my]) => {
+            const myList = my || [];
+            const hint = document.getElementById('driver-bids-hint');
+            const countEl = document.getElementById('driver-taken-count');
+            if (hint && countEl && window.AppUser?.role === 'DRIVER') {
+              hint.style.display = 'block';
+              countEl.textContent = myList.length;
+            }
+            return [...myList, ...(available || [])];
+          }
+        )
+      : api('orders?role=' + u.role);
+  ordersPromise
     .then((orders) => {
       const statusLabels = { NEW: 'Новая', DRAFT: 'Черновик', PUBLISHED: 'Ожидает откликов', TAKEN: 'Взята', AT_WAREHOUSE: 'На складе', LOADING_DONE: 'Загрузка', IN_TRANSIT: 'В пути', DELIVERED: 'Доставлено', COMPLETED: 'Завершена', CANCELLED: 'Отменена' };
       const statusClass = { NEW: 'published', DRAFT: 'draft', PUBLISHED: 'published', TAKEN: 'taken', IN_TRANSIT: 'in_progress', LOADING_DONE: 'in_progress', AT_WAREHOUSE: 'in_progress', DELIVERED: 'in_progress', COMPLETED: 'completed', CANCELLED: 'cancelled' };
@@ -70,6 +97,8 @@ export function loadOrdersList() {
       (orders || []).forEach((o) => {
         const fromAddr = o.fromWarehouse?.address || o.fromWarehouse?.name || '—';
         const toAddr = o.toAddress || '—';
+        const fromAddrLink = fromAddr !== '—' ? `<a href="https://yandex.ru/maps/?text=${encodeURIComponent(fromAddr)}" target="_blank" rel="noopener" class="addr-link">${escapeHtml(fromAddr)}</a>` : '—';
+        const toAddrLink = toAddr !== '—' ? `<a href="https://yandex.ru/maps/?text=${encodeURIComponent(toAddr)}" target="_blank" rel="noopener" class="addr-link">${escapeHtml(toAddr)}</a>` : '—';
         const dateStr = o.preferredDate ? new Date(o.preferredDate).toLocaleDateString('ru') : '—';
         const timeStr = [o.preferredTimeFrom, o.preferredTimeTo].filter(Boolean).join('–') || '';
         const dateTimeStr = timeStr ? dateStr + ', ' + timeStr : dateStr;
@@ -78,8 +107,8 @@ export function loadOrdersList() {
         const driverName = o.driver?.user ? (o.driver.user.firstName || '') + ' ' + (o.driver.user.lastName || '') : '';
         html += `<div class="order-item" data-status="${statusClass[o.status] || ''}" data-order-id="${o.id}">`;
         html += `<div class="head"><span class="route">${o.orderNumber || o.id}</span><span class="status-badge ${statusClass[o.status] || ''}">${statusLabels[o.status] || o.status}</span></div>`;
-        html += `<div class="meta"><span class="text-muted">Откуда:</span> ${fromAddr}</div>`;
-        html += `<div class="meta"><span class="text-muted">Куда:</span> ${toAddr}</div>`;
+        html += `<div class="meta"><span class="text-muted">Откуда:</span> ${fromAddrLink}</div>`;
+        html += `<div class="meta"><span class="text-muted">Куда:</span> ${toAddrLink}</div>`;
         html += `<div class="meta"><span class="text-muted">Дата и время:</span> ${dateTimeStr}</div>`;
         html += `<div class="meta"><span class="text-muted">Груз:</span> ${cargoStr}</div>`;
         html += `<div class="meta"><span class="text-muted">Стоимость:</span> ${priceStr}</div>`;
@@ -152,7 +181,10 @@ const ORDER_STATUS_LABELS = {
 
 export function loadOrderDetail(id) {
   api('orders/' + id).then((o) => {
-    const fromAddr = o.fromWarehouse?.address || '—';
+    const fromAddr = o.fromWarehouse?.address || o.fromWarehouse?.name || '—';
+    const toAddr = o.toAddress || '—';
+    const fromAddrLink = fromAddr !== '—' ? `<a href="https://yandex.ru/maps/?text=${encodeURIComponent(fromAddr)}" target="_blank" rel="noopener" class="addr-link">${escapeHtml(fromAddr)}</a>` : '—';
+    const toAddrLink = toAddr !== '—' ? `<a href="https://yandex.ru/maps/?text=${encodeURIComponent(toAddr)}" target="_blank" rel="noopener" class="addr-link">${escapeHtml(toAddr)}</a>` : '—';
     const titleEl = document.getElementById('order-detail-title');
     const contentEl = document.getElementById('order-detail-content');
     const actionsEl = document.getElementById('order-detail-actions');
@@ -167,9 +199,9 @@ export function loadOrderDetail(id) {
         <div class="section-title">Статус</div>
         <div class="mb-16">${ORDER_STATUS_LABELS[o.status] || o.status}</div>
         <div class="section-title">Откуда</div>
-        <div class="mb-16">${fromAddr}</div>
+        <div class="mb-16">${fromAddrLink}</div>
         <div class="section-title">Адрес назначения</div>
-        <div class="mb-16">${o.toAddress || '—'}</div>
+        <div class="mb-16">${toAddrLink}</div>
         <div class="section-title">Груз</div>
         <div class="mb-16">${o.cargoPlaces ? o.cargoPlaces + ' мест' : '—'}, ${o.cargoType || '—'}${o.cargoWeight ? ', до ' + o.cargoWeight + ' кг' : ''}</div>
         <div class="section-title">Дата и время подачи</div>
@@ -217,6 +249,19 @@ export function loadOrderDetail(id) {
           };
           actionsEl.appendChild(unpublishBtn);
         }
+        const cancelOrderBtn = document.createElement('button');
+        cancelOrderBtn.className = 'btn btn-danger btn-small';
+        cancelOrderBtn.textContent = 'Отменить заявку';
+        cancelOrderBtn.onclick = () => {
+          if (!confirm('Отменить заявку? Она попадёт в отменённые.')) return;
+          api('orders/' + o.id + '/cancel', { method: 'POST' })
+            .then(() => {
+              showScreen('orders');
+              loadOrdersList();
+            })
+            .catch((e) => alert(e?.message || 'Ошибка'));
+        };
+        actionsEl.appendChild(cancelOrderBtn);
       }
 
       if (window.AppUser?.role === 'DRIVER' && o.driverId && ['TAKEN', 'AT_WAREHOUSE', 'LOADING_DONE', 'IN_TRANSIT'].includes(o.status)) {
@@ -301,6 +346,7 @@ export function loadClientProfile() {
       if (firstWarehouse) {
         set('profile-warehouse-name', firstWarehouse.name);
         set('profile-warehouse-address', firstWarehouse.address);
+        if (firstWarehouse.address) setTimeout(() => updateProfileWarehouseMap(), 500);
       } else {
         set('profile-warehouse-name', '');
         set('profile-warehouse-address', '');
@@ -309,6 +355,7 @@ export function loadClientProfile() {
     .catch(() => {});
 
   loadMyRatings();
+  loadProfileOrdersDriversMap();
 }
 
 export function loadDriverProfile() {
@@ -447,8 +494,11 @@ function loadMyRatings() {
 }
 
 let yandexMapInstance = null;
+let profileWarehouseMapInstance = null;
+let profileOrdersDriversMapInstance = null;
 const ADDRESS_SUGGEST_IDS = ['order-from-address', 'order-to-address', 'profile-warehouse-address'];
-let addressSuggestInstances = [];
+let addressSuggestInited = false;
+let addressSuggestViews = {};
 
 function loadYandexScript(apiKey, suggestApiKey) {
   const suggestKey = suggestApiKey != null && suggestApiKey !== '' ? suggestApiKey : apiKey;
@@ -514,18 +564,167 @@ function initYandexMap(containerId, data) {
   yandexMapInstance = map;
 }
 
-function initAddressSuggests() {
-  if (addressSuggestInstances.length > 0) return;
-  ADDRESS_SUGGEST_IDS.forEach((id) => {
-    const inst = createAddressInputWithYandexSuggest(id, {
-      debounceMs: 400,
-      onSelectAddress(fullAddress, coordinates) {
-        const el = document.getElementById(id);
-        if (el) el.value = fullAddress;
-      },
+export function updateProfileWarehouseMap() {
+  const container = document.getElementById('profile-warehouse-map');
+  const input = document.getElementById('profile-warehouse-address');
+  if (!container || !input) return;
+  const address = input.value.trim();
+  if (profileWarehouseMapInstance) {
+    profileWarehouseMapInstance.destroy();
+    profileWarehouseMapInstance = null;
+  }
+  if (!address) {
+    container.innerHTML = 'Точка на карте — введите адрес выше';
+    container.style.display = 'flex';
+    return;
+  }
+  if (!window.ymaps) {
+    container.innerHTML = 'Загрузка карты…';
+    return;
+  }
+  container.innerHTML = '';
+  container.style.display = 'block';
+  window.ymaps
+    .geocode(address, { results: 1 })
+    .then((res) => {
+      const first = res.geoObjects.get(0);
+      if (!first) {
+        container.innerHTML = 'Адрес не найден';
+        container.style.display = 'flex';
+        return;
+      }
+      const coords = first.geometry.getCoordinates();
+      const map = new window.ymaps.Map('profile-warehouse-map', {
+        center: coords,
+        zoom: 16,
+        controls: ['zoomControl', 'typeSelector'],
+      });
+      const placemark = new window.ymaps.Placemark(coords, {
+        iconCaption: address.length > 40 ? address.slice(0, 40) + '…' : address,
+      });
+      map.geoObjects.add(placemark);
+      profileWarehouseMapInstance = map;
+    })
+    .catch(() => {
+      container.innerHTML = 'Не удалось найти адрес';
+      container.style.display = 'flex';
     });
-    addressSuggestInstances.push(inst);
-  });
+}
+
+function initAddressSuggests() {
+  if (addressSuggestInited) return;
+  addressSuggestInited = true;
+  api('config')
+    .then((config) => {
+      const apiKey = config.yandexMapsApiKey || config.yandexSuggestApiKey || window.APP_YANDEX_MAPS_API_KEY || '';
+      const suggestKey = config.yandexSuggestApiKey || config.yandexMapsApiKey || window.APP_YANDEX_MAPS_API_KEY || '';
+      if (!apiKey && !suggestKey) return;
+      return loadYandexScript(apiKey || suggestKey, suggestKey);
+    })
+    .then(() => {
+      if (!window.ymaps || !window.ymaps.load) return;
+      return window.ymaps.load(['SuggestView']);
+    })
+    .then(() => {
+      if (!window.ymaps.SuggestView) return;
+      ADDRESS_SUGGEST_IDS.forEach((id) => {
+        if (addressSuggestViews[id]) return;
+        const el = document.getElementById(id);
+        if (!el) return;
+        try {
+          const sv = new window.ymaps.SuggestView(id, { results: 7 });
+          addressSuggestViews[id] = sv;
+          if (id === 'profile-warehouse-address') {
+            sv.events.add('select', () => updateProfileWarehouseMap());
+          }
+        } catch (_) {}
+      });
+      const addrInput = document.getElementById('profile-warehouse-address');
+      if (addrInput && !addrInput._mapBlur) {
+        addrInput._mapBlur = true;
+        addrInput.addEventListener('blur', () => updateProfileWarehouseMap());
+      }
+      updateProfileWarehouseMap();
+    })
+    .catch(() => {});
+}
+
+export function loadProfileOrdersDriversMap() {
+  const container = document.getElementById('profile-orders-drivers-map');
+  if (!container) return;
+  if (profileOrdersDriversMapInstance) {
+    profileOrdersDriversMapInstance.destroy();
+    profileOrdersDriversMapInstance = null;
+  }
+  api('config')
+    .then((config) => {
+      const apiKey = config.yandexMapsApiKey || window.APP_YANDEX_MAPS_API_KEY || '';
+      if (!apiKey) {
+        container.innerHTML = 'Укажите YANDEX_MAPS_API_KEY';
+        return;
+      }
+      return loadYandexScript(apiKey, config.yandexSuggestApiKey).then(() =>
+        api('map').then((data) => ({ config, data }))
+      );
+    })
+    .then((result) => {
+      if (!result || !window.ymaps) return;
+      const { data } = result;
+      const orders = (data.orders || []).filter((o) => o.lat != null && o.lng != null);
+      const drivers = (data.drivers || []).filter((d) => d.latitude != null && d.longitude != null);
+      if (orders.length + drivers.length === 0) {
+        container.innerHTML = 'Нет заявок и водителей с геолокацией';
+        container.style.display = 'flex';
+        return;
+      }
+      container.innerHTML = '';
+      container.style.display = 'block';
+      const center =
+        orders.length
+          ? [orders[0].lat, orders[0].lng]
+          : drivers.length
+            ? [Number(drivers[0].latitude), Number(drivers[0].longitude)]
+            : [55.7558, 37.6173];
+      const map = new window.ymaps.Map('profile-orders-drivers-map', {
+        center,
+        zoom: 10,
+        controls: ['zoomControl', 'typeSelector'],
+      });
+      orders.forEach((o) => {
+        const pm = new window.ymaps.Placemark(
+          [o.lat, o.lng],
+          {
+            balloonContent: `<strong>${o.orderNumber || o.id}</strong><br/>${o.toAddress || ''}<br/>${o.status || ''}`,
+            iconCaption: o.orderNumber || '',
+          },
+          { preset: 'islands#orangeDeliveryIcon' }
+        );
+        map.geoObjects.add(pm);
+      });
+      drivers.forEach((d) => {
+        const name = [d.user?.firstName, d.user?.lastName].filter(Boolean).join(' ') || 'Водитель';
+        const pm = new window.ymaps.Placemark(
+          [Number(d.latitude), Number(d.longitude)],
+          {
+            balloonContent: `${name}<br/>${d.driverStatus || ''}`,
+            iconCaption: name,
+          },
+          { preset: 'islands#blueAutoIcon' }
+        );
+        map.geoObjects.add(pm);
+      });
+      if (orders.length + drivers.length > 1) {
+        const bounds = map.geoObjects.getBounds();
+        if (bounds) map.setBounds(bounds, { checkZoomRange: true, zoomMargin: 50 });
+      }
+      profileOrdersDriversMapInstance = map;
+    })
+    .catch(() => {
+      if (container) {
+        container.innerHTML = 'Ошибка загрузки карты';
+        container.style.display = 'flex';
+      }
+    });
 }
 
 export function loadMapData() {
@@ -600,6 +799,18 @@ function bindOrderForm() {
     window._currentOrderId = null;
     showScreen('home');
   });
+  document.getElementById('order-cancel-order')?.addEventListener('click', () => {
+    const orderId = window._currentOrderId;
+    if (!orderId) return;
+    if (!confirm('Отменить заявку? Она попадёт в отменённые.')) return;
+    api('orders/' + orderId + '/cancel', { method: 'POST' })
+      .then(() => {
+        window._currentOrderId = null;
+        showScreen('orders');
+        loadOrdersList();
+      })
+      .catch((e) => alert(e?.message || 'Ошибка'));
+  });
 }
 
 function bindProfiles() {
@@ -647,7 +858,25 @@ function bindProfiles() {
   document.getElementById('profile-client-get-telegram-phone')?.addEventListener('click', () => {
     api('auth/request-telegram-phone', { method: 'POST' })
       .then((res) => {
-        alert(res.message || 'Перейдите в чат с ботом и нажмите «Отправить номер телефона».');
+        alert('Перейдите в чат с ботом, нажмите «Отправить номер телефона». После отправки вернитесь сюда — номер подставится в профиль.');
+        const botName = window.APP_TELEGRAM_BOT_USERNAME || 'drivergo_bot';
+        if (typeof Telegram !== 'undefined' && Telegram?.WebApp?.openTelegramLink) {
+          Telegram.WebApp.openTelegramLink('https://t.me/' + botName);
+        }
+      })
+      .catch((e) => alert(e?.message || 'Ошибка'));
+  });
+  // При возврате в приложение (например из чата бота) обновляем профиль — номер из Telegram подставится в поле «Телефон»
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible') return;
+    const active = document.querySelector('.screen.active');
+    if (active && active.id === 'screen-profile-client') loadClientProfile();
+    if (active && active.id === 'screen-profile-driver') loadDriverProfile();
+  });
+  document.getElementById('profile-driver-get-telegram-phone')?.addEventListener('click', () => {
+    api('auth/request-telegram-phone', { method: 'POST' })
+      .then((res) => {
+        alert('Перейдите в чат с ботом, нажмите «Отправить номер телефона». После отправки вернитесь сюда — номер подставится в профиль.');
         const botName = window.APP_TELEGRAM_BOT_USERNAME || 'drivergo_bot';
         if (typeof Telegram !== 'undefined' && Telegram?.WebApp?.openTelegramLink) {
           Telegram.WebApp.openTelegramLink('https://t.me/' + botName);
@@ -671,28 +900,22 @@ function bindProfiles() {
       .then(() => alert('Сохранено'))
       .catch((e) => alert(e?.message || 'Ошибка'));
   });
-  document.getElementById('profile-driver-location')?.addEventListener('click', () => {
+  function updateDriverLocation() {
     if (!navigator.geolocation) { alert('Геолокация недоступна'); return; }
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         api('drivers/location', { method: 'PUT', json: { latitude: pos.coords.latitude, longitude: pos.coords.longitude } })
-          .then(() => alert('Геолокация обновлена'))
+          .then(() => {
+            alert('Геолокация обновлена');
+            loadMapData();
+          })
           .catch((e) => alert(e?.message || 'Ошибка'));
       },
       () => alert('Не удалось получить координаты')
     );
-  });
-  document.getElementById('driver-status-update-location')?.addEventListener('click', () => {
-    if (!navigator.geolocation) { alert('Геолокация недоступна'); return; }
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        api('drivers/location', { method: 'PUT', json: { latitude: pos.coords.latitude, longitude: pos.coords.longitude } })
-          .then(() => alert('Геолокация обновлена'))
-          .catch((e) => alert(e?.message || 'Ошибка'));
-      },
-      () => alert('Не удалось получить координаты')
-    );
-  });
+  }
+  document.getElementById('profile-driver-location')?.addEventListener('click', updateDriverLocation);
+  document.getElementById('driver-status-update-location')?.addEventListener('click', updateDriverLocation);
 }
 
 function bindNavigation() {
@@ -779,14 +1002,16 @@ function bindMisc() {
       document.querySelectorAll('#order-tabs button').forEach((b) => b.classList.remove('active'));
       btn.classList.add('active');
       const filter = btn.dataset.filter;
+      const u = window.AppUser;
       document.querySelectorAll('#orders-list .order-item').forEach((item) => {
         const status = item.dataset.status;
+        const isTakenTab = filter === 'taken' && (status === 'taken' || (u?.role === 'DRIVER' && (status === 'in_progress' || status === 'completed')));
         const show =
           filter === 'all' ||
           (filter === 'draft' && status === 'draft') ||
           (filter === 'published' && status === 'published') ||
-          (filter === 'taken' && status === 'taken') ||
-          (filter === 'progress' && status === 'progress') ||
+          isTakenTab ||
+          (filter === 'progress' && status === 'in_progress') ||
           (filter === 'completed' && status === 'completed') ||
           (filter === 'cancelled' && status === 'cancelled');
         item.style.display = show ? 'block' : 'none';

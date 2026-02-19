@@ -19,7 +19,15 @@
     .btn-ghost { background: transparent; color: #3b82f6; }
     .btn-ghost:hover { background: #262626; }
     #login-block { margin-top: 40px; }
-    #users-block { display: none; }
+    #users-block, #orders-block { display: none; }
+    .admin-tabs { display: flex; gap: 8px; margin-bottom: 16px; }
+    .admin-tabs button { padding: 8px 16px; border-radius: 6px; border: 1px solid #404040; background: #262626; color: #a3a3a3; cursor: pointer; }
+    .admin-tabs button.active { background: #3b82f6; color: #fff; border-color: #3b82f6; }
+    .order-detail-row { display: none; }
+    .order-detail-row.expanded { display: table-row; }
+    .order-detail-cell { padding: 12px; background: #0f0f0f; vertical-align: top; }
+    .order-detail-cell .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px 24px; font-size: 13px; }
+    .order-detail-cell .grid span { color: #a3a3a3; }
     table { width: 100%; border-collapse: collapse; margin-top: 16px; }
     th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid #333; }
     th { color: #a3a3a3; font-weight: 600; }
@@ -43,6 +51,11 @@
 
   <div id="users-block">
     <div class="logout"><button type="button" class="btn-ghost" id="logout-btn">Выйти</button></div>
+    <div class="admin-tabs">
+      <button type="button" class="admin-tab active" data-tab="users">Пользователи</button>
+      <button type="button" class="admin-tab" data-tab="orders">Заявки</button>
+    </div>
+    <div id="admin-users-panel">
     <h1>Пользователи</h1>
     <table>
       <thead>
@@ -60,6 +73,12 @@
       <tbody id="users-tbody"></tbody>
     </table>
     <p class="error" id="users-error"></p>
+    </div>
+    <div id="admin-orders-panel" style="display: none;">
+      <h1>Заявки</h1>
+      <p class="error" id="orders-error"></p>
+      <div id="orders-list"></div>
+    </div>
   </div>
 
   <script type="module" src="/src/admin.js"></script>

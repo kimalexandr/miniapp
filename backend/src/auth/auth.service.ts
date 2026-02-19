@@ -95,7 +95,7 @@ export class AuthService {
   async setPhoneFromTelegram(telegramId: number, rawPhone: string): Promise<boolean> {
     const user = await this.prisma.user.findUnique({
       where: { telegramId: BigInt(telegramId) },
-      include: { client: true },
+      include: { client: true, driver: true },
     });
     if (!user) return false;
     const phone = this.normalizePhoneE164(rawPhone);

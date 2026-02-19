@@ -23,4 +23,10 @@ export class AdminController {
   async deleteUser(@Param('id') id: string) {
     return this.admin.deleteUser(id);
   }
+
+  @Get('orders')
+  @UseGuards(JwtAuthGuard, AdminGuard)
+  async listOrders() {
+    return this.admin.listOrders();
+  }
 }

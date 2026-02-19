@@ -94,6 +94,13 @@ export class OrdersController {
     return this.orders.unpublishOrder(id, payload.userId);
   }
 
+  @Post(':id/cancel')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.CLIENT)
+  async cancel(@CurrentUser() payload: JwtPayload, @Param('id') id: string) {
+    return this.orders.cancelOrder(id, payload.userId);
+  }
+
   @Post(':id/status')
   @UseGuards(RolesGuard)
   @Roles(UserRole.DRIVER)

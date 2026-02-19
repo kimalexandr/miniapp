@@ -149,6 +149,7 @@
     </div>
 
     <button type="button" class="btn btn-ghost mt-16" id="order-cancel">Отмена</button>
+    <button type="button" class="btn btn-danger mt-16" id="order-cancel-order" style="display:none">Отменить заявку</button>
     <button type="button" class="btn btn-primary mt-16" id="order-submit">Сохранить и отправить</button>
   </section>
 
@@ -240,10 +241,10 @@
   <!-- Активные заявки (клиент и водитель видят статусы) -->
   <section id="screen-orders" class="screen">
     <div class="page-header">Активные заявки</div>
-    <div class="driver-hint" id="driver-bids-hint" style="display:none">У вас <strong>5 из 20</strong> активных откликов</div>
+    <div class="driver-hint" id="driver-bids-hint" style="display:none">У вас <strong id="driver-taken-count">0</strong> взятых заявок</div>
     <div class="tabs-inline" id="order-tabs">
       <button type="button" class="active" data-filter="all">Все</button>
-      <button type="button" data-filter="draft">Черновики</button>
+      <button type="button" data-filter="draft" id="order-tab-draft">Черновики</button>
       <button type="button" data-filter="published">Ожидают откликов</button>
       <button type="button" data-filter="taken">Взятые</button>
       <button type="button" data-filter="progress">В процессе</button>
@@ -285,8 +286,13 @@
       <label>Название склада</label>
       <input type="text" id="profile-warehouse-name" placeholder="Например: Основной склад" class="mb-8" />
       <label>Адрес склада</label>
-      <div class="map-placeholder mt-8">Точка на карте</div>
-      <input type="text" id="profile-warehouse-address" placeholder="Адрес" class="mt-16" />
+      <input type="text" id="profile-warehouse-address" placeholder="Адрес" class="mb-8" />
+      <div id="profile-warehouse-map" class="profile-warehouse-map" style="height:200px;border-radius:var(--radius-sm);background:var(--surface2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;color:var(--text-muted);font-size:14px;">Точка на карте — введите адрес выше</div>
+    </div>
+    <div class="card">
+      <div class="card-title">Заявки и водители на карте</div>
+      <p class="card-title text-muted mb-8" style="font-size:12px;">Точки — заявки (погрузка), маркеры — водители</p>
+      <div id="profile-orders-drivers-map" style="height:220px;border-radius:var(--radius-sm);background:var(--surface2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;color:var(--text-muted);font-size:14px;">Загрузка карты…</div>
     </div>
     <div class="card">
       <div class="card-title">Погрузка</div>
@@ -430,6 +436,11 @@
     <div class="card">
       <div class="card-title">Статус на карте</div>
       <select id="profile-driver-status"><option value="">—</option><option value="free">Свободен</option><option value="dogruz">Догруз</option><option value="busy">Занят</option></select>
+    </div>
+    <div class="card">
+      <div class="card-title">Телефон из Telegram</div>
+      <p class="card-title text-muted mb-8">Приложение может подставить ваш номер из Telegram в профиль.</p>
+      <button type="button" class="btn btn-primary" id="profile-driver-get-telegram-phone">Узнать мой номер из Telegram</button>
     </div>
     <button type="button" class="btn btn-primary mt-16" id="profile-driver-save">Сохранить</button>
     <button type="button" class="btn btn-primary mt-16" id="profile-driver-location">Обновить геолокацию</button>

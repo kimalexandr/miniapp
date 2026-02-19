@@ -60,4 +60,77 @@ export class AdminService {
     });
     return { success: true };
   }
+
+  async listOrders() {
+    const orders = await this.prisma.order.findMany({
+      orderBy: { createdAt: 'desc' },
+      include: {
+        client: {
+          include: {
+            user: { select: { firstName: true, lastName: true, username: true, phone: true } },
+          },
+        },
+        driver: {
+          include: {
+            user: { select: { firstName: true, lastName: true, username: true, phone: true } },
+          },
+        },
+        fromWarehouse: { select: { name: true, address: true } },
+        statusHistory: { orderBy: { createdAt: 'desc' }, take: 5 },
+      },
+    });
+    return orders.map((o) => ({
+      id: o.id,
+      orderNumber: o.orderNumber,
+      status: o.status,
+      createdAt: o.createdAt,
+      updatedAt: o.updatedAt,
+      toAddress: o.toAddress,
+      toLatitude: o.toLatitude,
+      toLongitude: o.toLongitude,
+      preferredDate: o.preferredDate,
+      preferredTimeFrom: o.preferredTimeFrom,
+      preferredTimeTo: o.preferredTimeTo,
+      cargoType: o.cargoType,
+      cargoVolume: o.cargoVolume,
+      cargoWeight: o.cargoWeight,
+      cargoPlaces: o.cargoPlaces,
+      pickupRequired: o.pickupRequired,
+      specialConditions: o.specialConditions,
+      contactName: o.contactName,
+      contactPhone: o.contactPhone,
+      price: o.price != null ? Number(o.price) : null,
+      paymentType: o.paymentType,
+      responseDeadline: o.responseDeadline,
+      client: o.client
+        ? {
+            id: o.client.id,
+            companyName: o.client.companyName,
+            user: o.client.user
+              ? {
+                  firstName: o.client.user.firstName,
+                  lastName: o.client.user.lastName,
+                  username: o.client.user.username,
+                  phone: o.client.user.phone,
+                }
+              : null,
+          }
+        : null,
+      driver: o.driver
+        ? {
+            id: o.driver.id,
+            user: o.driver.user
+              ? {
+                  firstName: o.driver.user.firstName,
+                  lastName: o.driver.user.lastName,
+                  username: o.driver.user.username,
+                  phone: o.driver.user.phone,
+                }
+              : null,
+          }
+        : null,
+      fromWarehouse: o.fromWarehouse,
+      statusHistory: o.statusHistory,
+    }));
+  }
 }

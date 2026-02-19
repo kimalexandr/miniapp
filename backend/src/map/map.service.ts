@@ -30,12 +30,22 @@ export class MapService {
           fromWarehouse: { select: { address: true, latitude: true, longitude: true } },
         },
       });
+      const drivers = await this.prisma.driver.findMany({
+        where: { latitude: { not: null }, longitude: { not: null } },
+        select: {
+          id: true,
+          latitude: true,
+          longitude: true,
+          driverStatus: true,
+          user: { select: { firstName: true, lastName: true } },
+        },
+      });
       const withCoords = orders.map((o) => ({
         ...o,
         lat: o.fromWarehouse?.latitude ?? o.toLatitude,
         lng: o.fromWarehouse?.longitude ?? o.toLongitude,
       }));
-      return { orders: withCoords, drivers: [] };
+      return { orders: withCoords, drivers };
     }
 
     if (role === UserRole.DRIVER && user.driver) {
