@@ -13,6 +13,7 @@ import { MapModule } from './map/map.module';
 import { AuditModule } from './audit/audit.module';
 import { RatingsModule } from './ratings/ratings.module';
 import { AdminModule } from './admin/admin.module';
+import { YandexModule } from './yandex/yandex.module';
 import { PrismaModule } from './prisma/prisma.module';
 
 @Module({
@@ -38,6 +39,7 @@ import { PrismaModule } from './prisma/prisma.module';
     AuditModule,
     RatingsModule,
     AdminModule,
+    YandexModule,
   ],
 })
 export class AppModule {}

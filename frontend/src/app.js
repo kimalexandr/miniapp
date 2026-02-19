@@ -1,5 +1,6 @@
 import { api } from './api.js';
 import { isFullyLoggedIn } from './auth.js';
+import { createAddressInputWithYandexSuggest } from './address-input-yandex.js';
 
 const PROTECTED_SCREENS = [
   'home', 'order', 'orders', 'order-detail', 'map',
@@ -446,8 +447,8 @@ function loadMyRatings() {
 }
 
 let yandexMapInstance = null;
-let addressSuggestInited = false;
 const ADDRESS_SUGGEST_IDS = ['order-from-address', 'order-to-address', 'profile-warehouse-address'];
+let addressSuggestInstances = [];
 
 function loadYandexScript(apiKey, suggestApiKey) {
   const suggestKey = suggestApiKey != null && suggestApiKey !== '' ? suggestApiKey : apiKey;
@@ -513,35 +514,18 @@ function initYandexMap(containerId, data) {
   yandexMapInstance = map;
 }
 
-let addressSuggestViews = {};
-
 function initAddressSuggests() {
-  if (addressSuggestInited) return;
-  addressSuggestInited = true;
-  api('config')
-    .then((config) => {
-      const apiKey = config.yandexMapsApiKey || config.yandexSuggestApiKey || window.APP_YANDEX_MAPS_API_KEY || '';
-      const suggestKey = config.yandexSuggestApiKey || config.yandexMapsApiKey || window.APP_YANDEX_MAPS_API_KEY || '';
-      if (!apiKey && !suggestKey) return;
-      loadYandexScript(apiKey || suggestKey, suggestKey)
-        .then(() => {
-          if (!window.ymaps || !window.ymaps.load) return;
-          return window.ymaps.load(['SuggestView']);
-        })
-        .then(() => {
-          if (!window.ymaps.SuggestView) return;
-          ADDRESS_SUGGEST_IDS.forEach((id) => {
-            if (addressSuggestViews[id]) return;
-            const el = document.getElementById(id);
-            if (!el) return;
-            try {
-              addressSuggestViews[id] = new window.ymaps.SuggestView(id, { results: 7 });
-            } catch (_) {}
-          });
-        })
-        .catch(() => {});
-    })
-    .catch(() => {});
+  if (addressSuggestInstances.length > 0) return;
+  ADDRESS_SUGGEST_IDS.forEach((id) => {
+    const inst = createAddressInputWithYandexSuggest(id, {
+      debounceMs: 400,
+      onSelectAddress(fullAddress, coordinates) {
+        const el = document.getElementById(id);
+        if (el) el.value = fullAddress;
+      },
+    });
+    addressSuggestInstances.push(inst);
+  });
 }
 
 export function loadMapData() {
