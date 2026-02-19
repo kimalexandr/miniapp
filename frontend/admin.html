@@ -28,6 +28,9 @@
     .order-detail-cell { padding: 12px; background: #0f0f0f; vertical-align: top; }
     .order-detail-cell .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px 24px; font-size: 13px; }
     .order-detail-cell .grid span { color: #a3a3a3; }
+    .report-filters { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: center; margin-bottom: 16px; }
+    .report-filters label { color: #a3a3a3; }
+    .report-filters input, .report-filters select { padding: 8px; border: 1px solid #404040; border-radius: 6px; background: #262626; color: #fff; }
     table { width: 100%; border-collapse: collapse; margin-top: 16px; }
     th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid #333; }
     th { color: #a3a3a3; font-weight: 600; }
@@ -54,6 +57,8 @@
     <div class="admin-tabs">
       <button type="button" class="admin-tab active" data-tab="users">Пользователи</button>
       <button type="button" class="admin-tab" data-tab="orders">Заявки</button>
+      <button type="button" class="admin-tab" data-tab="driver-report">Заработок водителей</button>
+      <button type="button" class="admin-tab" data-tab="client-report">Отчёт по клиентам</button>
     </div>
     <div id="admin-users-panel">
     <h1>Пользователи</h1>
@@ -78,6 +83,46 @@
       <h1>Заявки</h1>
       <p class="error" id="orders-error"></p>
       <div id="orders-list"></div>
+    </div>
+    <div id="admin-driver-report-panel" style="display: none;">
+      <h1>Заработок водителей</h1>
+      <div class="report-filters">
+        <label>Водитель</label>
+        <select id="driver-report-driver">
+          <option value="">— Все —</option>
+        </select>
+        <label>Клиент</label>
+        <select id="driver-report-client">
+          <option value="">— Все —</option>
+        </select>
+        <label>Период с</label>
+        <input type="date" id="driver-report-from" />
+        <label>по</label>
+        <input type="date" id="driver-report-to" />
+        <button type="button" class="btn-primary" id="driver-report-apply">Применить</button>
+      </div>
+      <p class="error" id="driver-report-error"></p>
+      <div id="driver-report-result"></div>
+    </div>
+    <div id="admin-client-report-panel" style="display: none;">
+      <h1>Отчёт по клиентам</h1>
+      <div class="report-filters">
+        <label>Клиент</label>
+        <select id="client-report-client">
+          <option value="">— Все —</option>
+        </select>
+        <label>Водитель</label>
+        <select id="client-report-driver">
+          <option value="">— Все —</option>
+        </select>
+        <label>Период с</label>
+        <input type="date" id="client-report-from" />
+        <label>по</label>
+        <input type="date" id="client-report-to" />
+        <button type="button" class="btn-primary" id="client-report-apply">Применить</button>
+      </div>
+      <p class="error" id="client-report-error"></p>
+      <div id="client-report-result"></div>
     </div>
   </div>
 

@@ -41,4 +41,12 @@ export class RatingsController {
   async getMyStats(@Request() req: RequestWithUser) {
     return this.ratings.getMyStats(req.user.userId);
   }
+
+  /**
+   * Рейтинг по userId (для отображения в профиле клиента/водителя)
+   */
+  @Get('user/:userId')
+  async getStatsByUser(@Param('userId') userId: string) {
+    return this.ratings.getStatsByUserId(userId);
+  }
 }

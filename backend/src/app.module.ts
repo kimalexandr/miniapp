@@ -12,6 +12,8 @@ import { WarehousesModule } from './warehouses/warehouses.module';
 import { MapModule } from './map/map.module';
 import { AuditModule } from './audit/audit.module';
 import { RatingsModule } from './ratings/ratings.module';
+import { NotificationsModule } from './notifications/notifications.module';
+import { EarningsModule } from './earnings/earnings.module';
 import { AdminModule } from './admin/admin.module';
 import { YandexModule } from './yandex/yandex.module';
 import { PrismaModule } from './prisma/prisma.module';
@@ -38,6 +40,8 @@ import { PrismaModule } from './prisma/prisma.module';
     MapModule,
     AuditModule,
     RatingsModule,
+    NotificationsModule,
+    EarningsModule,
     AdminModule,
     YandexModule,
   ],

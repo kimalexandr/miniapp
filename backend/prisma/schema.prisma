@@ -27,6 +27,7 @@ enum OrderStatus {
   DRAFT           // Черновик
   PUBLISHED       // Ожидает откликов
   TAKEN           // Взята водителем
+  IN_PROGRESS     // Рейс начат (taken → in_progress)
   AT_WAREHOUSE    // Прибыл на склад
   LOADING_DONE    // Загрузка завершена
   IN_TRANSIT      // В пути
@@ -99,9 +100,10 @@ model Driver {
   createdAt         DateTime @default(now()) @map("created_at")
   updatedAt         DateTime @updatedAt @map("updated_at")
 
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  orders          Order[]  @relation("OrderDriver")
-  ratingsReceived Rating[] @relation("RatingToDriver")
+  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orders          Order[]         @relation("OrderDriver")
+  ratingsReceived Rating[]       @relation("RatingToDriver")
+  earnings        DriverEarning[]
 
   @@map("drivers")
 }
@@ -148,8 +150,11 @@ model Order {
   contactPhone        String?     @map("contact_phone")
   status              OrderStatus @default(NEW) @map("status")
   responseDeadline    DateTime?   @map("response_deadline")    // дедлайн приёма откликов
-  price               Decimal?    @map("price")                // цена за заказ
-  paymentType         String?     @map("payment_type")          // наличные, безнал, с НДС
+  price               Decimal?    @map("price")                // цена за заказ (ставка)
+  agreedPrice         Decimal?    @map("agreed_price")         // зафиксированный заработок при взятии заявки
+  currency            String      @default("RUB") @map("currency")
+  paymentType         String?     @map("payment_type")          // наличные, безнал, с НДС (отображение)
+  paymentTypeKind     String?     @map("payment_type_kind")    // cash | non_cash для отчётов
   createdAt           DateTime    @default(now()) @map("created_at")
   updatedAt           DateTime    @updatedAt @map("updated_at")
 
@@ -158,16 +163,18 @@ model Order {
   fromWarehouse  Warehouse?           @relation("OrderFromWarehouse", fields: [fromWarehouseId], references: [id], onDelete: SetNull)
   statusHistory  OrderStatusHistory[]
   ratings        Rating[]
+  driverEarnings DriverEarning[]
 
   @@map("orders")
 }
 
 model OrderStatusHistory {
-  id        String      @id @default(uuid())
-  orderId   String      @map("order_id")
-  status    OrderStatus @map("status")
-  comment   String?     @map("comment")
-  createdAt DateTime    @default(now()) @map("created_at")
+  id              String      @id @default(uuid())
+  orderId         String      @map("order_id")
+  status          OrderStatus @map("status")
+  changedByUserId String?     @map("changed_by_user_id")
+  comment         String?     @map("comment")
+  createdAt       DateTime    @default(now()) @map("created_at")
 
   order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
@@ -206,19 +213,43 @@ model AuditLog {
 
 // Рейтинги и отзывы
 model Rating {
-  id         String   @id @default(uuid())
-  orderId    String   @map("order_id")
-  raterRole  UserRole @map("rater_role")        // кто оставил: CLIENT или DRIVER
-  targetClientId String? @map("target_client_id") // если оценка клиенту от водителя
-  targetDriverId String? @map("target_driver_id") // если оценка водителю от клиента
-  score      Int      @map("score")             // 1-5 звезд
-  comment    String?  @map("comment")           // текст отзыва
-  createdAt  DateTime @default(now()) @map("created_at")
+  id               String   @id @default(uuid())
+  orderId          String   @map("order_id")
+  fromUserId       String?  @map("from_user_id")   // кто оставил оценку
+  toUserId         String?  @map("to_user_id")     // кому (client или driver user id)
+  raterRole        UserRole @map("rater_role")     // кто оставил: CLIENT или DRIVER
+  targetClientId   String?  @map("target_client_id")
+  targetDriverId   String?  @map("target_driver_id")
+  score            Int      @map("score")          // 1-5 звезд
+  comment          String?  @map("comment")
+  createdAt        DateTime @default(now()) @map("created_at")
 
   order        Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
   targetClient Client?  @relation("RatingToClient", fields: [targetClientId], references: [id], onDelete: Cascade)
   targetDriver Driver?  @relation("RatingToDriver", fields: [targetDriverId], references: [id], onDelete: Cascade)
 
-  @@unique([orderId, raterRole]) // один рейтинг от клиента и один от водителя на заказ
+  @@unique([orderId, raterRole])
+  @@unique([orderId, fromUserId])
   @@map("ratings")
+}
+
+enum EarningStatus {
+  PENDING
+  CONFIRMED
+  PAID
+}
+
+model DriverEarning {
+  id        String        @id @default(uuid())
+  driverId  String        @map("driver_id")
+  orderId   String        @unique @map("order_id")
+  amount    Decimal       @map("amount")
+  currency  String        @default("RUB") @map("currency")
+  status    EarningStatus @default(CONFIRMED) @map("status")
+  createdAt DateTime     @default(now()) @map("created_at")
+
+  driver Driver @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  order  Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@map("driver_earnings")
 }

@@ -8,6 +8,51 @@ function escapeHtml(s) {
   return div.innerHTML;
 }
 
+export function showToast(message, type = 'info') {
+  const container = document.getElementById('toast-container');
+  if (!container) return;
+  const el = document.createElement('div');
+  el.className = 'toast toast--' + (type === 'success' || type === 'error' ? type : 'info');
+  el.textContent = message;
+  container.appendChild(el);
+  setTimeout(() => {
+    el.remove();
+  }, 3000);
+}
+
+const ORDER_STATUS_LABELS_MAP = {
+  NEW: 'Новая',
+  DRAFT: 'Черновик',
+  PUBLISHED: 'Ожидает откликов',
+  TAKEN: 'Взята',
+  IN_PROGRESS: 'В процессе',
+  AT_WAREHOUSE: 'На складе',
+  LOADING_DONE: 'Загрузка завершена',
+  IN_TRANSIT: 'В пути',
+  DELIVERED: 'Доставлено',
+  COMPLETED: 'Завершена',
+  CANCELLED: 'Отменена',
+};
+const ORDER_STATUS_CLASS_MAP = {
+  NEW: 'published',
+  DRAFT: 'draft',
+  PUBLISHED: 'published',
+  TAKEN: 'taken',
+  IN_PROGRESS: 'in_progress',
+  AT_WAREHOUSE: 'in_progress',
+  LOADING_DONE: 'in_progress',
+  IN_TRANSIT: 'in_progress',
+  DELIVERED: 'in_progress',
+  COMPLETED: 'completed',
+  CANCELLED: 'cancelled',
+};
+
+export function renderOrderStatusBadge(status) {
+  const label = ORDER_STATUS_LABELS_MAP[status] || status;
+  const cls = ORDER_STATUS_CLASS_MAP[status] || '';
+  return `<span class="status-badge ${cls}">${escapeHtml(label)}</span>`;
+}
+
 const PROTECTED_SCREENS = [
   'home', 'order', 'orders', 'order-detail', 'map',
   'profile-client', 'profile-driver', 'profile-client-view',
@@ -91,8 +136,8 @@ export function loadOrdersList() {
       : api('orders?role=' + u.role);
   ordersPromise
     .then((orders) => {
-      const statusLabels = { NEW: 'Новая', DRAFT: 'Черновик', PUBLISHED: 'Ожидает откликов', TAKEN: 'Взята', AT_WAREHOUSE: 'На складе', LOADING_DONE: 'Загрузка', IN_TRANSIT: 'В пути', DELIVERED: 'Доставлено', COMPLETED: 'Завершена', CANCELLED: 'Отменена' };
-      const statusClass = { NEW: 'published', DRAFT: 'draft', PUBLISHED: 'published', TAKEN: 'taken', IN_TRANSIT: 'in_progress', LOADING_DONE: 'in_progress', AT_WAREHOUSE: 'in_progress', DELIVERED: 'in_progress', COMPLETED: 'completed', CANCELLED: 'cancelled' };
+      const statusLabels = { ...ORDER_STATUS_LABELS_MAP, LOADING_DONE: 'Загрузка' };
+      const statusClass = ORDER_STATUS_CLASS_MAP;
       let html = '';
       (orders || []).forEach((o) => {
         const fromAddr = o.fromWarehouse?.address || o.fromWarehouse?.name || '—';
@@ -106,7 +151,7 @@ export function loadOrdersList() {
         const priceStr = o.price != null ? (typeof o.price === 'object' ? o.price.toString() : o.price) + ' ₽' : '—';
         const driverName = o.driver?.user ? (o.driver.user.firstName || '') + ' ' + (o.driver.user.lastName || '') : '';
         html += `<div class="order-item" data-status="${statusClass[o.status] || ''}" data-order-id="${o.id}">`;
-        html += `<div class="head"><span class="route">${o.orderNumber || o.id}</span><span class="status-badge ${statusClass[o.status] || ''}">${statusLabels[o.status] || o.status}</span></div>`;
+        html += `<div class="head"><span class="route">${o.orderNumber || o.id}</span>${renderOrderStatusBadge(o.status)}</div>`;
         html += `<div class="meta"><span class="text-muted">Откуда:</span> ${fromAddrLink}</div>`;
         html += `<div class="meta"><span class="text-muted">Куда:</span> ${toAddrLink}</div>`;
         html += `<div class="meta"><span class="text-muted">Дата и время:</span> ${dateTimeStr}</div>`;
@@ -130,8 +175,8 @@ export function loadOrdersList() {
         const item = btn.closest('.order-item');
         btn.addEventListener('click', () => {
           api('orders/' + item.dataset.orderId + '/take', { method: 'POST' })
-            .then(() => { loadOrdersList(); showScreen('orders'); })
-            .catch((e) => alert(e?.message || 'Ошибка'));
+            .then(() => { loadOrdersList(); showScreen('orders'); showToast('Заявка взята', 'success'); })
+            .catch((e) => showToast(e?.message || 'Ошибка', 'error'));
         });
       });
       listEl.querySelectorAll('.order-btn-status').forEach((btn) => {
@@ -166,18 +211,7 @@ export function loadOrdersList() {
     });
 }
 
-const ORDER_STATUS_LABELS = {
-  NEW: 'Новая',
-  DRAFT: 'Черновик',
-  PUBLISHED: 'Ожидает откликов',
-  TAKEN: 'Взята',
-  AT_WAREHOUSE: 'На складе',
-  LOADING_DONE: 'Загрузка завершена',
-  IN_TRANSIT: 'В пути',
-  DELIVERED: 'Доставлено',
-  COMPLETED: 'Завершена',
-  CANCELLED: 'Отменена',
-};
+const ORDER_STATUS_LABELS = { ...ORDER_STATUS_LABELS_MAP, LOADING_DONE: 'Загрузка завершена' };
 
 export function loadOrderDetail(id) {
   api('orders/' + id).then((o) => {
@@ -197,7 +231,7 @@ export function loadOrderDetail(id) {
     if (contentEl) {
       contentEl.innerHTML = `
         <div class="section-title">Статус</div>
-        <div class="mb-16">${ORDER_STATUS_LABELS[o.status] || o.status}</div>
+        <div class="mb-16">${renderOrderStatusBadge(o.status)}</div>
         <div class="section-title">Откуда</div>
         <div class="mb-16">${fromAddrLink}</div>
         <div class="section-title">Адрес назначения</div>
@@ -221,6 +255,7 @@ export function loadOrderDetail(id) {
     if (actionsEl) {
       actionsEl.innerHTML = '';
       const isClient = window.AppUser?.role === 'CLIENT';
+      const isDriver = window.AppUser?.role === 'DRIVER';
       const canEditOrUnpublish = isClient && (o.status === 'NEW' || o.status === 'PUBLISHED') && !o.driverId;
 
       if (canEditOrUnpublish) {
@@ -242,13 +277,16 @@ export function loadOrderDetail(id) {
             api('orders/' + o.id + '/unpublish', { method: 'POST' })
               .then(() => {
                 loadOrderDetail(o.id);
-                showScreen('orders');
                 loadOrdersList();
+                showToast('Заявка снята с публикации', 'success');
               })
-              .catch((e) => alert(e?.message || 'Ошибка'));
+              .catch((e) => showToast(e?.message || 'Ошибка', 'error'));
           };
           actionsEl.appendChild(unpublishBtn);
         }
+      }
+
+      if (isClient && ['NEW', 'DRAFT', 'PUBLISHED', 'TAKEN'].includes(o.status)) {
         const cancelOrderBtn = document.createElement('button');
         cancelOrderBtn.className = 'btn btn-danger btn-small';
         cancelOrderBtn.textContent = 'Отменить заявку';
@@ -258,15 +296,75 @@ export function loadOrderDetail(id) {
             .then(() => {
               showScreen('orders');
               loadOrdersList();
+              showToast('Заявка отменена', 'success');
             })
-            .catch((e) => alert(e?.message || 'Ошибка'));
+            .catch((e) => showToast(e?.message || 'Ошибка', 'error'));
         };
         actionsEl.appendChild(cancelOrderBtn);
       }
 
-      if (window.AppUser?.role === 'DRIVER' && o.driverId && ['TAKEN', 'AT_WAREHOUSE', 'LOADING_DONE', 'IN_TRANSIT'].includes(o.status)) {
+      if (isClient && ['IN_PROGRESS', 'IN_TRANSIT', 'DELIVERED'].includes(o.status)) {
+        const completeBtn = document.createElement('button');
+        completeBtn.className = 'btn btn-primary btn-small';
+        completeBtn.textContent = 'Подтвердить выполнение';
+        completeBtn.onclick = () => {
+          if (!confirm('Подтвердить, что заявка выполнена?')) return;
+          api('orders/' + o.id + '/complete', { method: 'POST' })
+            .then(() => {
+              loadOrderDetail(o.id);
+              loadOrdersList();
+              showToast('Заявка завершена', 'success');
+            })
+            .catch((e) => showToast(e?.message || 'Ошибка', 'error'));
+        };
+        actionsEl.appendChild(completeBtn);
+      }
+
+      const clientRated = (o.ratings || []).some((r) => r.raterRole === 'CLIENT');
+      if (isClient && o.status === 'COMPLETED' && o.driverId && !clientRated) {
+        const rateBtn = document.createElement('button');
+        rateBtn.className = 'btn btn-primary btn-small';
+        rateBtn.textContent = 'Оценить водителя';
+        rateBtn.onclick = () => {
+          window._currentOrderId = o.id;
+          showScreen('rating');
+        };
+        actionsEl.appendChild(rateBtn);
+      }
+
+      if (isDriver && o.driverId && o.status === 'TAKEN') {
+        const startBtn = document.createElement('button');
+        startBtn.className = 'btn btn-primary btn-small mr-8';
+        startBtn.textContent = 'Начать рейс';
+        startBtn.onclick = () => {
+          api('orders/' + o.id + '/start', { method: 'POST' })
+            .then(() => {
+              loadOrderDetail(o.id);
+              loadOrdersList();
+              showToast('Рейс начат', 'success');
+            })
+            .catch((e) => showToast(e?.message || 'Ошибка', 'error'));
+        };
+        actionsEl.appendChild(startBtn);
+        const cancelByDriverBtn = document.createElement('button');
+        cancelByDriverBtn.className = 'btn btn-danger btn-small';
+        cancelByDriverBtn.textContent = 'Отменить заявку';
+        cancelByDriverBtn.onclick = () => {
+          if (!confirm('Отказаться от заявки? Она снова станет доступна другим водителям.')) return;
+          api('orders/' + o.id + '/cancel-by-driver', { method: 'POST' })
+            .then(() => {
+              showScreen('orders');
+              loadOrdersList();
+              showToast('Заявка отменена', 'success');
+            })
+            .catch((e) => showToast(e?.message || 'Ошибка', 'error'));
+        };
+        actionsEl.appendChild(cancelByDriverBtn);
+      }
+
+      if (isDriver && o.driverId && ['TAKEN', 'IN_PROGRESS', 'AT_WAREHOUSE', 'LOADING_DONE', 'IN_TRANSIT'].includes(o.status)) {
         const statusBtn = document.createElement('button');
-        statusBtn.className = 'btn btn-primary btn-small';
+        statusBtn.className = 'btn btn-ghost btn-small';
         statusBtn.textContent = 'Сменить статус';
         statusBtn.onclick = () => {
           window._currentOrderId = o.id;
@@ -780,19 +878,19 @@ function bindOrderForm() {
     if (orderId) {
       api('orders/' + orderId, { method: 'PUT', json: payload })
         .then((order) => {
-          alert('Заявка обновлена: ' + (order.orderNumber || order.id));
+          showToast('Заявка обновлена: ' + (order.orderNumber || order.id), 'success');
           window._currentOrderId = null;
           showScreen('orders');
           loadOrdersList();
         })
-        .catch((e) => alert(e?.message || 'Ошибка обновления заявки'));
+        .catch((e) => showToast(e?.message || 'Ошибка обновления заявки', 'error'));
     } else {
       api('orders', { method: 'POST', json: payload })
         .then((order) => {
-          alert('Заявка создана: ' + (order.orderNumber || order.id));
+          showToast('Заявка создана: ' + (order.orderNumber || order.id), 'success');
           showScreen('home');
         })
-        .catch((e) => alert(e?.message || 'Ошибка создания заявки'));
+        .catch((e) => showToast(e?.message || 'Ошибка создания заявки', 'error'));
     }
   });
   document.getElementById('order-cancel')?.addEventListener('click', () => {
@@ -1038,26 +1136,23 @@ function bindMisc() {
   // Обработчик отправки рейтинга
   document.getElementById('rating-submit')?.addEventListener('click', () => {
     const orderId = window._currentOrderId;
-    if (!orderId) { alert('Заявка не выбрана'); return; }
-    
+    if (!orderId) { showToast('Заявка не выбрана', 'error'); return; }
     let score = 0;
     document.querySelectorAll('#rating-stars [data-star]').forEach((star, i) => {
       if (star.textContent === '★') score = i + 1;
     });
-    if (score === 0) { alert('Выберите оценку'); return; }
-    
+    if (score === 0) { showToast('Выберите оценку', 'error'); return; }
     const comment = (document.getElementById('rating-comment')?.value || '').trim();
-    
-    api('ratings', {
+    api('orders/' + orderId + '/rate', {
       method: 'POST',
-      json: { orderId, score, comment: comment || undefined },
+      json: { score, comment: comment || undefined },
     })
       .then(() => {
-        alert('Спасибо за оценку!');
+        showToast('Спасибо за оценку!', 'success');
         showScreen('orders');
         loadOrdersList();
       })
-      .catch((e) => alert(e?.message || 'Ошибка отправки рейтинга'));
+      .catch((e) => showToast(e?.message || 'Ошибка отправки рейтинга', 'error'));
   });
 }
 

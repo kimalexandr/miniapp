@@ -1,16 +1,35 @@
 import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderDto } from './dto/update-order.dto';
-import { OrderStatus } from '@prisma/client';
+import { OrderStatus, EarningStatus } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
+
+function paymentTypeToKind(pt: string | null | undefined): 'cash' | 'non_cash' | null {
+  if (!pt) return null;
+  const lower = pt.toLowerCase();
+  if (lower === 'cash' || lower.includes('налич')) return 'cash';
+  if (lower === 'non_cash' || lower.includes('безнал') || lower.includes('ндс')) return 'non_cash';
+  return null;
+}
+
+const ACTIVE_DRIVER_STATUSES: OrderStatus[] = [
+  OrderStatus.TAKEN,
+  OrderStatus.IN_PROGRESS,
+  OrderStatus.AT_WAREHOUSE,
+  OrderStatus.LOADING_DONE,
+  OrderStatus.IN_TRANSIT,
+  OrderStatus.DELIVERED,
+];
 
 @Injectable()
 export class OrdersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   private async nextOrderNumber(): Promise<string> {
@@ -53,12 +72,13 @@ export class OrdersService {
         responseDeadline: dto.responseDeadline ? new Date(dto.responseDeadline) : null,
         price: dto.price != null ? new Decimal(dto.price) : null,
         paymentType: dto.paymentType ?? null,
+        paymentTypeKind: paymentTypeToKind(dto.paymentType),
         status: OrderStatus.NEW,
       },
     });
 
     await this.prisma.orderStatusHistory.create({
-      data: { orderId: order.id, status: OrderStatus.NEW, comment: 'Заявка создана' },
+      data: { orderId: order.id, status: OrderStatus.NEW, comment: 'Заявка создана', changedByUserId: clientUserId },
     });
     await this.audit.log(clientUserId, 'order_created', 'Order', order.id, { orderNumber });
     return order;
@@ -102,14 +122,28 @@ export class OrdersService {
     });
   }
 
-  async listAvailableForDriver(driverUserId: string) {
+  async listAvailableForDriver(
+    driverUserId: string,
+    filters?: { preferredDateFrom?: string; preferredDateTo?: string; priceMin?: number; priceMax?: number },
+  ) {
     const driver = await this.prisma.driver.findUnique({ where: { userId: driverUserId } });
     if (!driver) return [];
+    const where: Record<string, unknown> = {
+      driverId: null,
+      status: OrderStatus.PUBLISHED,
+    };
+    if (filters?.preferredDateFrom || filters?.preferredDateTo) {
+      where.preferredDate = {};
+      if (filters.preferredDateFrom) (where.preferredDate as Record<string, Date>).gte = new Date(filters.preferredDateFrom);
+      if (filters.preferredDateTo) (where.preferredDate as Record<string, Date>).lte = new Date(filters.preferredDateTo);
+    }
+    if (filters?.priceMin != null || filters?.priceMax != null) {
+      where.price = {};
+      if (filters.priceMin != null) (where.price as Record<string, unknown>).gte = filters.priceMin;
+      if (filters.priceMax != null) (where.price as Record<string, unknown>).lte = filters.priceMax;
+    }
     return this.prisma.order.findMany({
-      where: {
-        driverId: null,
-        status: { in: [OrderStatus.NEW, OrderStatus.PUBLISHED] },
-      },
+      where,
       orderBy: { createdAt: 'desc' },
       include: {
         client: { include: { user: { select: { firstName: true } } } },
@@ -124,7 +158,7 @@ export class OrdersService {
     return this.prisma.order.findMany({
       where: {
         driverId: driver.id,
-        status: { in: [OrderStatus.TAKEN, OrderStatus.AT_WAREHOUSE, OrderStatus.LOADING_DONE, OrderStatus.IN_TRANSIT, OrderStatus.DELIVERED, OrderStatus.COMPLETED] },
+        status: { in: [OrderStatus.TAKEN, OrderStatus.IN_PROGRESS, OrderStatus.AT_WAREHOUSE, OrderStatus.LOADING_DONE, OrderStatus.IN_TRANSIT, OrderStatus.DELIVERED, OrderStatus.COMPLETED] },
       },
       orderBy: { updatedAt: 'desc' },
       include: {
@@ -139,25 +173,100 @@ export class OrdersService {
     const driver = await this.prisma.driver.findUnique({ where: { userId: driverUserId } });
     if (!driver) throw new ForbiddenException('Профиль водителя не найден');
 
+    const activeOrder = await this.prisma.order.findFirst({
+      where: { driverId: driver.id, status: { in: ACTIVE_DRIVER_STATUSES } },
+    });
+    if (activeOrder) throw new ForbiddenException('У вас уже есть активная заявка. Завершите или отмените её.');
+
     const order = await this.prisma.order.findUnique({ where: { id: orderId } });
     if (!order) throw new NotFoundException('Заявка не найдена');
     if (order.driverId) throw new ForbiddenException('Заявка уже взята');
-    const availableStatuses: OrderStatus[] = [OrderStatus.NEW, OrderStatus.PUBLISHED];
-    if (!availableStatuses.includes(order.status)) {
+    if (order.status !== OrderStatus.PUBLISHED) {
       throw new ForbiddenException('Заявка недоступна для взятия');
     }
+
+    const agreedPrice = order.agreedPrice ?? order.price;
+    const currency = order.currency ?? 'RUB';
 
     await this.prisma.$transaction([
       this.prisma.order.update({
         where: { id: orderId },
-        data: { driverId: driver.id, status: OrderStatus.TAKEN },
+        data: {
+          driverId: driver.id,
+          status: OrderStatus.TAKEN,
+          ...(agreedPrice != null && { agreedPrice }),
+          currency,
+        },
       }),
       this.prisma.orderStatusHistory.create({
-        data: { orderId, status: OrderStatus.TAKEN, comment: 'Взята водителем' },
+        data: { orderId, status: OrderStatus.TAKEN, comment: 'Взята водителем', changedByUserId: driverUserId },
       }),
     ]);
     await this.audit.log(driverUserId, 'order_taken', 'Order', orderId, {});
+    this.notifications.notifyOrderTaken(orderId);
     return this.findById(orderId, driverUserId);
+  }
+
+  async startOrder(orderId: string, driverUserId: string) {
+    const driver = await this.prisma.driver.findUnique({ where: { userId: driverUserId } });
+    if (!driver) throw new ForbiddenException('Профиль водителя не найден');
+
+    const order = await this.prisma.order.findUnique({ where: { id: orderId } });
+    if (!order) throw new NotFoundException('Заявка не найдена');
+    if (order.driverId !== driver.id) throw new ForbiddenException('Это не ваша заявка');
+    if (order.status !== OrderStatus.TAKEN) throw new ForbiddenException('Начать рейс можно только для заявки в статусе «Взята»');
+
+    await this.prisma.$transaction([
+      this.prisma.order.update({
+        where: { id: orderId },
+        data: { status: OrderStatus.IN_PROGRESS },
+      }),
+      this.prisma.orderStatusHistory.create({
+        data: { orderId, status: OrderStatus.IN_PROGRESS, comment: 'Рейс начат', changedByUserId: driverUserId },
+      }),
+    ]);
+    await this.audit.log(driverUserId, 'order_started', 'Order', orderId, {});
+    return this.findById(orderId, driverUserId);
+  }
+
+  async completeOrder(orderId: string, clientUserId: string) {
+    const client = await this.prisma.client.findUnique({ where: { userId: clientUserId } });
+    if (!client) throw new ForbiddenException('Профиль клиента не найден');
+
+    const order = await this.prisma.order.findUnique({ where: { id: orderId } });
+    if (!order) throw new NotFoundException('Заявка не найдена');
+    if (order.clientId !== client.id) throw new ForbiddenException('Это не ваша заявка');
+    const allowedForComplete: OrderStatus[] = [OrderStatus.IN_PROGRESS, OrderStatus.IN_TRANSIT, OrderStatus.DELIVERED];
+    if (!allowedForComplete.includes(order.status)) {
+      throw new ForbiddenException('Подтвердить выполнение можно только для заявки в процессе доставки');
+    }
+    const agreedPrice = order.agreedPrice ?? order.price;
+    if (agreedPrice == null) {
+      throw new ForbiddenException('У заказа не указана согласованная сумма (agreedPrice). Завершение невозможно.');
+    }
+    if (!order.driverId) throw new ForbiddenException('У заказа не назначен водитель');
+
+    await this.prisma.$transaction([
+      this.prisma.order.update({
+        where: { id: orderId },
+        data: { status: OrderStatus.COMPLETED },
+      }),
+      this.prisma.orderStatusHistory.create({
+        data: { orderId, status: OrderStatus.COMPLETED, comment: 'Подтверждено клиентом', changedByUserId: clientUserId },
+      }),
+      this.prisma.driverEarning.create({
+        data: {
+          driverId: order.driverId,
+          orderId: order.id,
+          amount: agreedPrice,
+          currency: order.currency ?? 'RUB',
+          status: EarningStatus.CONFIRMED,
+        },
+      }),
+    ]);
+    await this.audit.log(clientUserId, 'order_completed', 'Order', orderId, {});
+    this.notifications.notifyOrderCompleted(orderId);
+    return this.findById(orderId, clientUserId);
   }
 
   async updateOrderStatus(orderId: string, driverUserId: string, status: OrderStatus, comment?: string) {
@@ -169,6 +278,7 @@ export class OrdersService {
     if (order.driverId !== driver.id) throw new ForbiddenException('Это не ваша заявка');
 
     const allowed: OrderStatus[] = [
+      OrderStatus.IN_PROGRESS,
       OrderStatus.AT_WAREHOUSE,
       OrderStatus.LOADING_DONE,
       OrderStatus.IN_TRANSIT,
@@ -183,7 +293,7 @@ export class OrdersService {
         data: { status },
       }),
       this.prisma.orderStatusHistory.create({
-        data: { orderId, status, comment: comment ?? status },
+        data: { orderId, status, comment: comment ?? status, changedByUserId: driverUserId },
       }),
     ]);
     await this.audit.log(driverUserId, 'status_changed', 'Order', orderId, { status });
@@ -201,6 +311,10 @@ export class OrdersService {
     const allowedStatuses: OrderStatus[] = [OrderStatus.NEW, OrderStatus.DRAFT, OrderStatus.PUBLISHED];
     if (!allowedStatuses.includes(order.status)) {
       throw new ForbiddenException('Редактирование недоступно для заявки в текущем статусе');
+    }
+    const noPriceEditStatuses: OrderStatus[] = [OrderStatus.TAKEN, OrderStatus.IN_PROGRESS, OrderStatus.COMPLETED];
+    if (dto.price !== undefined && noPriceEditStatuses.includes(order.status)) {
+      throw new ForbiddenException('Изменение цены/ставки запрещено после взятия заявки');
     }
 
     const data: Record<string, unknown> = {};
@@ -221,7 +335,10 @@ export class OrdersService {
     if (dto.contactPhone !== undefined) data.contactPhone = dto.contactPhone ?? null;
     if (dto.responseDeadline !== undefined) data.responseDeadline = dto.responseDeadline ? new Date(dto.responseDeadline) : null;
     if (dto.price !== undefined) data.price = dto.price != null ? new Decimal(dto.price) : null;
-    if (dto.paymentType !== undefined) data.paymentType = dto.paymentType ?? null;
+    if (dto.paymentType !== undefined) {
+      data.paymentType = dto.paymentType ?? null;
+      data.paymentTypeKind = paymentTypeToKind(dto.paymentType);
+    }
 
     await this.prisma.order.update({
       where: { id: orderId },
@@ -249,7 +366,7 @@ export class OrdersService {
         data: { status: OrderStatus.DRAFT },
       }),
       this.prisma.orderStatusHistory.create({
-        data: { orderId, status: OrderStatus.DRAFT, comment: 'Снято с публикации клиентом' },
+        data: { orderId, status: OrderStatus.DRAFT, comment: 'Снято с публикации клиентом', changedByUserId: clientUserId },
       }),
     ]);
     await this.audit.log(clientUserId, 'order_unpublished', 'Order', orderId, {});
@@ -264,22 +381,45 @@ export class OrdersService {
     if (!order) throw new NotFoundException('Заявка не найдена');
     if (order.clientId !== client.id) throw new ForbiddenException('Это не ваша заявка');
 
-    const allowedStatuses: OrderStatus[] = [OrderStatus.NEW, OrderStatus.DRAFT, OrderStatus.PUBLISHED];
+    const allowedStatuses: OrderStatus[] = [OrderStatus.NEW, OrderStatus.DRAFT, OrderStatus.PUBLISHED, OrderStatus.TAKEN];
     if (!allowedStatuses.includes(order.status)) {
-      throw new ForbiddenException('Отменить можно только заявку без водителя');
+      throw new ForbiddenException('Отменить можно только заявку в статусе «Ожидает откликов» или «Взята»');
     }
-    if (order.driverId) throw new ForbiddenException('По заявке уже назначен водитель, отмена недоступна');
 
     await this.prisma.$transaction([
       this.prisma.order.update({
         where: { id: orderId },
-        data: { status: OrderStatus.CANCELLED },
+        data: { status: OrderStatus.CANCELLED, driverId: null },
       }),
       this.prisma.orderStatusHistory.create({
-        data: { orderId, status: OrderStatus.CANCELLED, comment: 'Отменена клиентом' },
+        data: { orderId, status: OrderStatus.CANCELLED, comment: 'Отменена клиентом', changedByUserId: clientUserId },
       }),
     ]);
     await this.audit.log(clientUserId, 'order_cancelled', 'Order', orderId, {});
     return this.findById(orderId, clientUserId);
+  }
+
+  async cancelOrderByDriver(orderId: string, driverUserId: string) {
+    const driver = await this.prisma.driver.findUnique({ where: { userId: driverUserId } });
+    if (!driver) throw new ForbiddenException('Профиль водителя не найден');
+
+    const order = await this.prisma.order.findUnique({ where: { id: orderId } });
+    if (!order) throw new NotFoundException('Заявка не найдена');
+    if (order.driverId !== driver.id) throw new ForbiddenException('Это не ваша заявка');
+    if (order.status !== OrderStatus.TAKEN) {
+      throw new ForbiddenException('Отменить можно только заявку в статусе «Взята» (до начала рейса)');
+    }
+
+    await this.prisma.$transaction([
+      this.prisma.order.update({
+        where: { id: orderId },
+        data: { status: OrderStatus.PUBLISHED, driverId: null },
+      }),
+      this.prisma.orderStatusHistory.create({
+        data: { orderId, status: OrderStatus.PUBLISHED, comment: 'Отказ водителя до начала рейса', changedByUserId: driverUserId },
+      }),
+    ]);
+    await this.audit.log(driverUserId, 'order_cancelled_by_driver', 'Order', orderId, {});
+    return this.findById(orderId, driverUserId);
   }
 }

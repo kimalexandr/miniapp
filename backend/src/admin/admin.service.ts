@@ -2,6 +2,44 @@ import { Injectable, ForbiddenException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
+import { OrderStatus } from '@prisma/client';
+import { Decimal } from '@prisma/client/runtime/library';
+
+export interface DriverEarningsReportParams {
+  driverId?: string;
+  clientId?: string;
+  from?: Date;
+  to?: Date;
+}
+
+export interface DriverEarningsReport {
+  totalAmount: number;
+  byPaymentType: { cash: number; non_cash: number };
+  byClients: { clientId: string; clientName: string; amount: number }[];
+}
+
+export interface ClientOrdersReportParams {
+  clientId?: string;
+  driverId?: string;
+  from?: Date;
+  to?: Date;
+}
+
+export interface ClientOrdersReport {
+  totalAmount: number;
+  byDrivers: { driverId: string; driverName: string; amount: number }[];
+}
+
+function toNum(d: Decimal | null | undefined): number {
+  return d != null ? Number(d) : 0;
+}
+
+function paymentKind(pt: string | null): 'cash' | 'non_cash' {
+  if (!pt) return 'non_cash';
+  const lower = pt.toLowerCase();
+  if (lower === 'cash' || lower.includes('налич')) return 'cash';
+  return 'non_cash';
+}
 
 @Injectable()
 export class AdminService {
@@ -131,6 +169,118 @@ export class AdminService {
         : null,
       fromWarehouse: o.fromWarehouse,
       statusHistory: o.statusHistory,
+      agreedPrice: o.agreedPrice != null ? Number(o.agreedPrice) : null,
+    }));
+  }
+
+  async getDriverEarningsReport(params: DriverEarningsReportParams): Promise<DriverEarningsReport> {
+    const where: { status: OrderStatus; driverId?: string; clientId?: string; updatedAt?: { gte?: Date; lte?: Date } } = {
+      status: OrderStatus.COMPLETED,
+    };
+    if (params.driverId) where.driverId = params.driverId;
+    if (params.clientId) where.clientId = params.clientId;
+    if (params.from != null || params.to != null) {
+      where.updatedAt = {};
+      if (params.from != null) where.updatedAt.gte = params.from;
+      if (params.to != null) where.updatedAt.lte = params.to;
+    }
+
+    const orders = await this.prisma.order.findMany({
+      where,
+      include: {
+        client: { include: { user: { select: { firstName: true, lastName: true } } } },
+      },
+    });
+
+    let totalAmount = 0;
+    const byPaymentType = { cash: 0, non_cash: 0 };
+    const byClientsMap = new Map<string, { clientName: string; amount: number }>();
+
+    for (const o of orders) {
+      const amount = toNum(o.agreedPrice ?? o.price);
+      if (amount <= 0) continue;
+      totalAmount += amount;
+      const kind = paymentKind(o.paymentTypeKind ?? o.paymentType);
+      byPaymentType[kind] += amount;
+      if (o.clientId) {
+        const cur = byClientsMap.get(o.clientId);
+        const clientName = o.client?.companyName || [o.client?.user?.firstName, o.client?.user?.lastName].filter(Boolean).join(' ') || '—';
+        if (cur) cur.amount += amount;
+        else byClientsMap.set(o.clientId, { clientName, amount });
+      }
+    }
+
+    const byClients = Array.from(byClientsMap.entries()).map(([clientId, v]) => ({
+      clientId,
+      clientName: v.clientName,
+      amount: v.amount,
+    }));
+
+    return { totalAmount, byPaymentType, byClients };
+  }
+
+  async getClientOrdersReport(params: ClientOrdersReportParams): Promise<ClientOrdersReport> {
+    const where: { status: OrderStatus; clientId?: string; driverId?: string; updatedAt?: { gte?: Date; lte?: Date } } = {
+      status: OrderStatus.COMPLETED,
+    };
+    if (params.clientId) where.clientId = params.clientId;
+    if (params.driverId) where.driverId = params.driverId;
+    if (params.from != null || params.to != null) {
+      where.updatedAt = {};
+      if (params.from != null) where.updatedAt.gte = params.from;
+      if (params.to != null) where.updatedAt.lte = params.to;
+    }
+
+    const orders = await this.prisma.order.findMany({
+      where,
+      include: {
+        driver: { include: { user: { select: { firstName: true, lastName: true } } } },
+      },
+    });
+
+    let totalAmount = 0;
+    const byDriversMap = new Map<string, { driverName: string; amount: number }>();
+
+    for (const o of orders) {
+      const amount = toNum(o.agreedPrice ?? o.price);
+      if (amount <= 0) continue;
+      totalAmount += amount;
+      if (o.driverId) {
+        const cur = byDriversMap.get(o.driverId);
+        const driverName = o.driver?.user ? [o.driver.user.firstName, o.driver.user.lastName].filter(Boolean).join(' ') || '—' : '—';
+        if (cur) cur.amount += amount;
+        else byDriversMap.set(o.driverId, { driverName, amount });
+      }
+    }
+
+    const byDrivers = Array.from(byDriversMap.entries()).map(([driverId, v]) => ({
+      driverId,
+      driverName: v.driverName,
+      amount: v.amount,
+    }));
+
+    return { totalAmount, byDrivers };
+  }
+
+  async listDriversForFilters(): Promise<{ id: string; name: string }[]> {
+    const drivers = await this.prisma.driver.findMany({
+      include: { user: { select: { firstName: true, lastName: true } } },
+      orderBy: { createdAt: 'desc' },
+    });
+    return drivers.map((d) => ({
+      id: d.id,
+      name: [d.user?.firstName, d.user?.lastName].filter(Boolean).join(' ') || d.fullName || d.id,
+    }));
+  }
+
+  async listClientsForFilters(): Promise<{ id: string; name: string }[]> {
+    const clients = await this.prisma.client.findMany({
+      include: { user: { select: { firstName: true, lastName: true } } },
+      orderBy: { createdAt: 'desc' },
+    });
+    return clients.map((c) => ({
+      id: c.id,
+      name: c.companyName || [c.user?.firstName, c.user?.lastName].filter(Boolean).join(' ') || c.id,
     }));
   }
 }

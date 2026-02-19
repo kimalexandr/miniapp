@@ -10,9 +10,11 @@ import {
 } from '@nestjs/common';
 import { OrderStatus } from '@prisma/client';
 import { OrdersService } from './orders.service';
+import { RatingsService } from '../ratings/ratings.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderDto } from './dto/update-order.dto';
 import { UpdateOrderStatusDto } from './dto/update-status.dto';
+import { RateOrderDto } from '../ratings/dto/rate-order.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { JwtPayload } from '../auth/jwt.strategy';
@@ -23,7 +25,10 @@ import { UserRole } from '@prisma/client';
 @Controller('orders')
 @UseGuards(JwtAuthGuard)
 export class OrdersController {
-  constructor(private readonly orders: OrdersService) {}
+  constructor(
+    private readonly orders: OrdersService,
+    private readonly ratings: RatingsService,
+  ) {}
 
   @Post()
   @UseGuards(RolesGuard)
@@ -53,8 +58,20 @@ export class OrdersController {
   @Get('available')
   @UseGuards(RolesGuard)
   @Roles(UserRole.DRIVER)
-  async available(@CurrentUser() payload: JwtPayload) {
-    return this.orders.listAvailableForDriver(payload.userId);
+  async available(
+    @CurrentUser() payload: JwtPayload,
+    @Query('preferredDateFrom') preferredDateFrom?: string,
+    @Query('preferredDateTo') preferredDateTo?: string,
+    @Query('priceMin') priceMin?: string,
+    @Query('priceMax') priceMax?: string,
+  ) {
+    const filters = {
+      preferredDateFrom,
+      preferredDateTo,
+      priceMin: priceMin != null ? Number(priceMin) : undefined,
+      priceMax: priceMax != null ? Number(priceMax) : undefined,
+    };
+    return this.orders.listAvailableForDriver(payload.userId, filters);
   }
 
   @Get('my')
@@ -74,6 +91,27 @@ export class OrdersController {
   @Roles(UserRole.DRIVER)
   async take(@CurrentUser() payload: JwtPayload, @Param('id') id: string) {
     return this.orders.takeOrder(id, payload.userId);
+  }
+
+  @Post(':id/start')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.DRIVER)
+  async start(@CurrentUser() payload: JwtPayload, @Param('id') id: string) {
+    return this.orders.startOrder(id, payload.userId);
+  }
+
+  @Post(':id/complete')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.CLIENT)
+  async complete(@CurrentUser() payload: JwtPayload, @Param('id') id: string) {
+    return this.orders.completeOrder(id, payload.userId);
+  }
+
+  @Post(':id/cancel-by-driver')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.DRIVER)
+  async cancelByDriver(@CurrentUser() payload: JwtPayload, @Param('id') id: string) {
+    return this.orders.cancelOrderByDriver(id, payload.userId);
   }
 
   @Put(':id')
@@ -99,6 +137,15 @@ export class OrdersController {
   @Roles(UserRole.CLIENT)
   async cancel(@CurrentUser() payload: JwtPayload, @Param('id') id: string) {
     return this.orders.cancelOrder(id, payload.userId);
+  }
+
+  @Post(':id/rate')
+  async rate(
+    @CurrentUser() payload: JwtPayload,
+    @Param('id') id: string,
+    @Body() dto: RateOrderDto,
+  ) {
+    return this.ratings.createRating(payload.userId, { ...dto, orderId: id });
   }
 
   @Post(':id/status')

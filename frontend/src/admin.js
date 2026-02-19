@@ -56,16 +56,19 @@ function showUsers() {
 
 function switchAdminTab(tab) {
   document.querySelectorAll('.admin-tab').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
-  const usersPanel = document.getElementById('admin-users-panel');
-  const ordersPanel = document.getElementById('admin-orders-panel');
-  if (tab === 'users') {
-    if (usersPanel) usersPanel.style.display = 'block';
-    if (ordersPanel) ordersPanel.style.display = 'none';
-  } else {
-    if (usersPanel) usersPanel.style.display = 'none';
-    if (ordersPanel) ordersPanel.style.display = 'block';
-    loadOrders();
-  }
+  const panels = {
+    users: 'admin-users-panel',
+    orders: 'admin-orders-panel',
+    'driver-report': 'admin-driver-report-panel',
+    'client-report': 'admin-client-report-panel',
+  };
+  Object.entries(panels).forEach(([t, id]) => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = t === tab ? 'block' : 'none';
+  });
+  if (tab === 'orders') loadOrders();
+  if (tab === 'driver-report') loadDriverReport();
+  if (tab === 'client-report') loadClientReport();
 }
 
 const STATUS_LABELS = {
@@ -158,6 +161,116 @@ function escapeHtml(s) {
   return div.innerHTML;
 }
 
+function loadDriverReport() {
+  const errEl = document.getElementById('driver-report-error');
+  const resultEl = document.getElementById('driver-report-result');
+  const driverSel = document.getElementById('driver-report-driver');
+  const clientSel = document.getElementById('client-report-client');
+  if (!resultEl || !driverSel || !clientSel) return;
+  errEl.textContent = '';
+  resultEl.innerHTML = 'Загрузка…';
+  Promise.all([api('admin/drivers-for-filters'), api('admin/clients-for-filters')])
+    .then(([drivers, clients]) => {
+      driverSel.innerHTML = '<option value="">— Все —</option>' + drivers.map((d) => `<option value="${d.id}">${escapeHtml(d.name)}</option>`).join('');
+      clientSel.innerHTML = '<option value="">— Все —</option>' + clients.map((c) => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
+      applyDriverReport();
+    })
+    .catch((e) => {
+      errEl.textContent = e?.message || 'Ошибка';
+      resultEl.innerHTML = '';
+    });
+}
+
+function applyDriverReport() {
+  const errEl = document.getElementById('driver-report-error');
+  const resultEl = document.getElementById('driver-report-result');
+  const driverId = document.getElementById('driver-report-driver')?.value || '';
+  const clientId = document.getElementById('driver-report-client')?.value || '';
+  const from = document.getElementById('driver-report-from')?.value || '';
+  const to = document.getElementById('driver-report-to')?.value || '';
+  errEl.textContent = '';
+  resultEl.innerHTML = 'Загрузка…';
+  const params = new URLSearchParams();
+  if (driverId) params.set('driverId', driverId);
+  if (clientId) params.set('clientId', clientId);
+  if (from) params.set('from', from);
+  if (to) params.set('to', to);
+  api('admin/reports/drivers/earnings?' + params.toString())
+    .then((data) => {
+      let html = `<p><strong>Итого заработок за период: ${data.totalAmount} ₽</strong></p>`;
+      html += '<table><thead><tr><th>По типу оплаты</th><th>Сумма</th></tr></thead><tbody>';
+      html += `<tr><td>Наличные (cash)</td><td>${data.byPaymentType?.cash ?? 0} ₽</td></tr>`;
+      html += `<tr><td>Безнал (non_cash)</td><td>${data.byPaymentType?.non_cash ?? 0} ₽</td></tr>`;
+      html += '</tbody></table>';
+      if (data.byClients?.length) {
+        html += '<h3>По клиентам</h3><table><thead><tr><th>Клиент</th><th>Сумма</th></tr></thead><tbody>';
+        data.byClients.forEach((r) => {
+          html += `<tr><td>${escapeHtml(r.clientName)}</td><td>${r.amount} ₽</td></tr>`;
+        });
+        html += '</tbody></table>';
+      }
+      resultEl.innerHTML = html;
+    })
+    .catch((e) => {
+      errEl.textContent = e?.message || 'Ошибка';
+      resultEl.innerHTML = '';
+    });
+}
+
+function loadClientReport() {
+  const errEl = document.getElementById('client-report-error');
+  const resultEl = document.getElementById('client-report-result');
+  const clientSel = document.getElementById('client-report-client');
+  const driverSel = document.getElementById('client-report-driver');
+  if (!resultEl || !clientSel || !driverSel) return;
+  errEl.textContent = '';
+  resultEl.innerHTML = 'Загрузка…';
+  Promise.all([api('admin/clients-for-filters'), api('admin/drivers-for-filters')])
+    .then(([clients, drivers]) => {
+      clientSel.innerHTML = '<option value="">— Все —</option>' + clients.map((c) => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
+      driverSel.innerHTML = '<option value="">— Все —</option>' + drivers.map((d) => `<option value="${d.id}">${escapeHtml(d.name)}</option>`).join('');
+      applyClientReport();
+    })
+    .catch((e) => {
+      errEl.textContent = e?.message || 'Ошибка';
+      resultEl.innerHTML = '';
+    });
+}
+
+function applyClientReport() {
+  const errEl = document.getElementById('client-report-error');
+  const resultEl = document.getElementById('client-report-result');
+  const clientId = document.getElementById('client-report-client')?.value || '';
+  const driverId = document.getElementById('client-report-driver')?.value || '';
+  const from = document.getElementById('client-report-from')?.value || '';
+  const to = document.getElementById('client-report-to')?.value || '';
+  errEl.textContent = '';
+  resultEl.innerHTML = 'Загрузка…';
+  const params = new URLSearchParams();
+  if (clientId) params.set('clientId', clientId);
+  if (driverId) params.set('driverId', driverId);
+  if (from) params.set('from', from);
+  if (to) params.set('to', to);
+  api('admin/reports/clients/orders?' + params.toString())
+    .then((data) => {
+      let html = `<p><strong>Общий объём заказов за период: ${data.totalAmount} ₽</strong></p>`;
+      if (data.byDrivers?.length) {
+        html += '<table><thead><tr><th>Водитель</th><th>Сумма</th></tr></thead><tbody>';
+        data.byDrivers.forEach((r) => {
+          html += `<tr><td>${escapeHtml(r.driverName)}</td><td>${r.amount} ₽</td></tr>`;
+        });
+        html += '</tbody></table>';
+      } else {
+        html += '<p>Нет данных по водителям</p>';
+      }
+      resultEl.innerHTML = html;
+    })
+    .catch((e) => {
+      errEl.textContent = e?.message || 'Ошибка';
+      resultEl.innerHTML = '';
+    });
+}
+
 function loadUsers() {
   const tbody = document.getElementById('users-tbody');
   const errEl = document.getElementById('users-error');
@@ -227,6 +340,9 @@ document.getElementById('logout-btn')?.addEventListener('click', () => {
 document.querySelectorAll('.admin-tab').forEach((btn) => {
   btn.addEventListener('click', () => switchAdminTab(btn.dataset.tab));
 });
+
+document.getElementById('driver-report-apply')?.addEventListener('click', applyDriverReport);
+document.getElementById('client-report-apply')?.addEventListener('click', applyClientReport);
 
 if (getToken()) {
   showUsers();

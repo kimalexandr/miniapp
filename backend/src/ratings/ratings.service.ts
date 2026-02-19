@@ -15,28 +15,28 @@ export class RatingsService {
 
     const order = await this.prisma.order.findUnique({
       where: { id: dto.orderId },
-      include: { client: true, driver: true },
+      include: { client: { include: { user: { select: { id: true } } } }, driver: { include: { user: { select: { id: true } } } } },
     });
     if (!order) throw new NotFoundException('Заявка не найдена');
-    if (order.status !== 'COMPLETED') throw new BadRequestException('Заявка еще не завершена');
+    if (order.status !== 'COMPLETED') throw new BadRequestException('Оценить можно только завершённую заявку');
 
-    // Проверяем, что пользователь участвовал в заказе
     const isClient = user.role === 'CLIENT' && order.clientId === user.client?.id;
     const isDriver = user.role === 'DRIVER' && order.driverId === user.driver?.id;
     if (!isClient && !isDriver) throw new BadRequestException('Вы не участвовали в этой заявке');
 
-    // Проверяем, что рейтинг еще не оставлен
+    const toUserId = user.role === 'CLIENT' ? order.driver?.user?.id : order.client?.user?.id;
+    if (!toUserId) throw new BadRequestException('Некого оценивать по этой заявке');
+
     const existing = await this.prisma.rating.findUnique({
-      where: {
-        orderId_raterRole: { orderId: dto.orderId, raterRole: user.role },
-      },
+      where: { orderId_raterRole: { orderId: dto.orderId, raterRole: user.role } },
     });
     if (existing) throw new BadRequestException('Вы уже оценили эту заявку');
 
-    // Создаем рейтинг
     const rating = await this.prisma.rating.create({
       data: {
         orderId: dto.orderId,
+        fromUserId: userId,
+        toUserId,
         raterRole: user.role,
         targetClientId: user.role === 'DRIVER' ? order.clientId : undefined,
         targetDriverId: user.role === 'CLIENT' ? order.driverId : undefined,
@@ -92,18 +92,19 @@ export class RatingsService {
     if (!userId || userId === 'admin') {
       throw new BadRequestException('Пользователь не найден');
     }
+    return this.getStatsByUserId(userId);
+  }
+
+  /** Рейтинг по userId (для профиля клиента/водителя) */
+  async getStatsByUserId(userId: string) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       include: { client: true, driver: true },
     });
-    if (!user || !user.role) throw new BadRequestException('Пользователь не найден');
-
-    if (user.role === 'CLIENT' && user.client) {
-      return this.calculateStats(user.client.id, 'CLIENT');
-    } else if (user.role === 'DRIVER' && user.driver) {
-      return this.calculateStats(user.driver.id, 'DRIVER');
-    }
-    return { averageScore: 0, totalCount: 0, distribution: {} };
+    if (!user) throw new NotFoundException('Пользователь не найден');
+    if (user.client) return this.calculateStats(user.client.id, 'CLIENT');
+    if (user.driver) return this.calculateStats(user.driver.id, 'DRIVER');
+    return { averageScore: 0, totalCount: 0, distribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 } };
   }
 
   private async calculateStats(targetId: string, targetRole: 'CLIENT' | 'DRIVER') {
